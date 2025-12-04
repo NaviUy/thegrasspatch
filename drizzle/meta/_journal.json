@@ -43,6 +43,13 @@
       "when": 1764636024140,
       "tag": "0005_thankful_adam_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1764818119531,
+      "tag": "0006_slim_energizer",
+      "breakpoints": true
     }
   ]
 }

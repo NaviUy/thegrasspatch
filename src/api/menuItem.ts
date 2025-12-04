@@ -6,6 +6,7 @@ export type NewMenuItemInput = {
   priceCents: number
   imageUrl?: string | null
   imagePlaceholderUrl?: string | null
+  badges?: Array<{ label: string; color: string }> | null
   isActive?: boolean
 }
 
@@ -24,6 +25,7 @@ export async function createMenuItem(input: NewMenuItemInput) {
       priceCents: input.priceCents,
       imageUrl: input.imageUrl ?? null,
       imagePlaceholderUrl: input.imagePlaceholderUrl ?? null,
+      badges: input.badges ?? null,
       isActive: input.isActive ?? true,
     })
     .returning()
@@ -45,6 +47,7 @@ export async function updateMenuItem(
       ...(updates.imagePlaceholderUrl !== undefined
         ? { imagePlaceholderUrl: updates.imagePlaceholderUrl }
         : {}),
+      ...(updates.badges !== undefined ? { badges: updates.badges } : {}),
       ...(updates.isActive !== undefined ? { isActive: updates.isActive } : {}),
     })
     .where(eq(schema.menuItems.id, id))
@@ -95,6 +98,7 @@ export async function getActiveMenuItems() {
       priceCents: schema.menuItems.priceCents,
       imageUrl: schema.menuItems.imageUrl,
       imagePlaceholderUrl: schema.menuItems.imagePlaceholderUrl,
+      badges: schema.menuItems.badges,
       isActive: schema.menuItems.isActive,
     })
     .from(schema.menuItems)

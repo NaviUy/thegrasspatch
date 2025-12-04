@@ -34,6 +34,7 @@ type MenuItem = {
   priceCents: number
   imageUrl?: string | null
   imagePlaceholderUrl?: string | null
+  badges?: Array<{ label: string; color: string }> | null
   isActive: boolean
 }
 
@@ -46,7 +47,10 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(item.name)
   const [price, setPrice] = useState((item.priceCents / 100).toFixed(2))
-  const [imageUrl, setImageUrl] = useState(item.imageUrl ?? '')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [badges, setBadges] = useState<Array<{ label: string; color: string }>>(
+    item.badges ?? [],
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -62,10 +66,24 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
 
     try {
       const priceCents = Math.round(priceNumber * 100)
+      let uploadedUrl: string | null = item.imageUrl ?? null
+      let uploadedPlaceholder: string | null | undefined =
+        item.imagePlaceholderUrl ?? null
+
+      if (imageFile) {
+        const { publicUrl, placeholderUrl } = await api.uploadMenuImage(
+          imageFile,
+        )
+        uploadedUrl = publicUrl
+        uploadedPlaceholder = placeholderUrl
+      }
+
       const { item: updated } = await api.updateMenuItem(item.id, {
         name: name.trim(),
         priceCents,
-        imageUrl: imageUrl.trim() || null,
+        imageUrl: uploadedUrl,
+        imagePlaceholderUrl: uploadedPlaceholder,
+        badges,
       })
       onUpdated(updated)
       setOpen(false) // ✅ only close on success
@@ -119,13 +137,65 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="edit-image">Image URL</Label>
+            <Label htmlFor="edit-image">Image</Label>
             <Input
               id="edit-image"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://…"
+              type="file"
+              accept="image/*"
+              onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
             />
+            <p className="text-[11px] text-slate-500">
+              Upload a new image (required for updates).
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Badges</Label>
+            {badges.map((badge, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <Input
+                  value={badge.label}
+                  placeholder="Label"
+                  onChange={(e) =>
+                    setBadges((prev) =>
+                      prev.map((b, i) =>
+                        i === idx ? { ...b, label: e.target.value } : b,
+                      ),
+                    )
+                  }
+                />
+                <Input
+                  value={badge.color}
+                  placeholder="#10b981"
+                  onChange={(e) =>
+                    setBadges((prev) =>
+                      prev.map((b, i) =>
+                        i === idx ? { ...b, color: e.target.value } : b,
+                      ),
+                    )
+                  }
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() =>
+                    setBadges((prev) => prev.filter((_, i) => i !== idx))
+                  }
+                >
+                  ✕
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setBadges((prev) => [...prev, { label: '', color: '' }])
+              }
+            >
+              Add badge
+            </Button>
           </div>
         </div>
 
@@ -162,8 +232,10 @@ function RouteComponent() {
   //form
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
-  const [imageUrl, setImageUrl] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [badges, setBadges] = useState<Array<{ label: string; color: string }>>(
+    [],
+  )
   const [creating, setCreating] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -211,7 +283,7 @@ function RouteComponent() {
 
     try {
       const priceCents = Math.round(priceNumber * 100)
-      let uploadedUrl = imageUrl.trim() || undefined
+      let uploadedUrl = undefined as string | undefined
       let uploadedPlaceholder: string | undefined
 
       if (imageFile) {
@@ -227,14 +299,15 @@ function RouteComponent() {
         priceCents,
         imageUrl: uploadedUrl,
         imagePlaceholderUrl: uploadedPlaceholder,
+        badges,
         isActive: true,
       })
 
       setItems((prev) => [item, ...prev])
       setName('')
       setPrice('')
-      setImageUrl('')
       setImageFile(null)
+      setBadges([])
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (error: any) {
       console.error(error)
@@ -330,14 +403,57 @@ function RouteComponent() {
                     onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
                   />
                   <p className="text-[11px] text-slate-500">
-                    Upload an image (preferred). You can still paste a URL below
-                    if needed.
+                    Upload an image (optional).
                   </p>
-                  <Input
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    placeholder="Optional: https://…"
-                  />
+                </div>
+
+                <div className="space-y-2 sm:col-span-3">
+                  <Label>Badges</Label>
+                  {badges.map((badge, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        value={badge.label}
+                        placeholder="Label"
+                        onChange={(e) =>
+                          setBadges((prev) =>
+                            prev.map((b, i) =>
+                              i === idx ? { ...b, label: e.target.value } : b,
+                            ),
+                          )
+                        }
+                      />
+                      <Input
+                        value={badge.color}
+                        placeholder="#10b981"
+                        onChange={(e) =>
+                          setBadges((prev) =>
+                            prev.map((b, i) =>
+                              i === idx ? { ...b, color: e.target.value } : b,
+                            ),
+                          )
+                        }
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          setBadges((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                      >
+                        ✕
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setBadges((prev) => [...prev, { label: '', color: '' }])
+                    }
+                  >
+                    Add badge
+                  </Button>
                 </div>
 
                 <div className="sm:col-span-3 flex justify-end">

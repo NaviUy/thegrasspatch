@@ -7,6 +7,7 @@ import {
   integer,
   timestamp,
   primaryKey,
+  jsonb,
 } from 'drizzle-orm/pg-core'
 
 /** USERS: admins + workers */
@@ -27,6 +28,12 @@ export const menuItems = pgTable('menu_items', {
   name: varchar('name', { length: 255 }).notNull(),
   imageUrl: text('image_url'),
   imagePlaceholderUrl: text('image_placeholder_url'),
+  badges: jsonb('badges').$type<
+    Array<{
+      label: string
+      color: string
+    }>
+  >(),
   priceCents: integer('price_cents').notNull(), // price in cents
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true })

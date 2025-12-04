@@ -43,6 +43,7 @@ type MenuItem = {
   priceCents: number
   imageUrl?: string | null
   imagePlaceholderUrl?: string | null
+  badges?: Array<{ label: string; color: string }> | null
   isActive: boolean
 }
 
@@ -145,6 +146,7 @@ function RouteComponent() {
                   priceCents={item.priceCents}
                   imageUrl={item.imageUrl}
                   imagePlaceholderUrl={item.imagePlaceholderUrl}
+                  badges={item.badges ?? []}
                   className="w-full max-w-xs"
                 >
                   <div className="ml-auto flex items-center gap-2">

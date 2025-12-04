@@ -1,28 +1,33 @@
-import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
+import { createFileRoute, Link, useRouter, redirect } from '@tanstack/react-router'
+import { useState } from 'react'
 import { api, setAuthToken } from '../../../lib/apiClient'
-import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useAuthUser } from '@/hooks/useAuthUser'
 
 export const Route = createFileRoute('/admin/login/')({
+  loader: async () => {
+    try {
+      await api.me()
+      throw redirect({ to: '/admin' })
+    } catch (err: any) {
+      const status = err?.status
+      if (status === 401 || status === 403) {
+        return null
+      }
+      throw err
+    }
+  },
+  pendingComponent: () => null,
   component: AdminLoginPage,
 })
 
 function AdminLoginPage() {
   const router = useRouter()
-  const { user, loading: authLoading } = useAuthUser({ redirectToLogin: false })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (!authLoading && user) {
-      router.navigate({ to: '/admin' })
-    }
-  }, [authLoading, user, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -7,6 +7,7 @@ type ProductCardProps = {
   priceCents?: number | null
   imageUrl?: string | null
   imagePlaceholderUrl?: string | null
+  badges?: Array<{ label: string; color: string }>
   isActive?: boolean
   // optional small text under the title if you want it later
   subtitle?: string
@@ -19,6 +20,7 @@ export function ProductCard({
   priceCents,
   imageUrl,
   imagePlaceholderUrl,
+  badges = [],
   isActive,
   subtitle,
   children,
@@ -98,6 +100,20 @@ export function ProductCard({
           </span>
         )}
       </div>
+
+      {badges.length > 0 && (
+        <div className="px-4 pt-3 flex flex-wrap gap-2">
+          {badges.map((badge, idx) => (
+            <span
+              key={`${badge.label}-${idx}`}
+              className="text-[11px] font-semibold px-2 py-1 rounded-full"
+              style={{ backgroundColor: badge.color || '#e2e8f0', color: '#0f172a' }}
+            >
+              {badge.label}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Content */}
       <div className="px-4 py-4 space-y-2">

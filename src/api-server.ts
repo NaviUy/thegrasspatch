@@ -276,7 +276,7 @@ app.post('/api/menu-items', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Only admins can create menu items.' })
   }
 
-  const { name, priceCents, imageUrl, imagePlaceholderUrl, isActive } =
+  const { name, priceCents, imageUrl, imagePlaceholderUrl, badges, isActive } =
     req.body ?? {}
 
   if (!name || typeof priceCents !== 'number') {
@@ -291,6 +291,7 @@ app.post('/api/menu-items', requireAuth, async (req, res) => {
       priceCents,
       imageUrl,
       imagePlaceholderUrl,
+      badges,
       isActive,
     })
     res.status(201).json({ item })
@@ -369,7 +370,7 @@ app.patch('/api/menu-items/:id', requireAuth, async (req, res) => {
   }
 
   const { id } = req.params
-  const { name, priceCents, imageUrl, imagePlaceholderUrl, isActive } =
+  const { name, priceCents, imageUrl, imagePlaceholderUrl, badges, isActive } =
     req.body ?? {}
 
   try {
@@ -378,6 +379,7 @@ app.patch('/api/menu-items/:id', requireAuth, async (req, res) => {
       priceCents,
       imageUrl,
       imagePlaceholderUrl,
+      badges,
       isActive,
     })
     res.json({ item })

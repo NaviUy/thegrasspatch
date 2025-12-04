@@ -18,6 +18,10 @@ export const Route = createRootRoute({
       {
         title: 'The Grass Patch',
       },
+      {
+        name: 'format-detection',
+        content: 'telephone=no,email=no,address=no',
+      },
     ],
     links: [
       {

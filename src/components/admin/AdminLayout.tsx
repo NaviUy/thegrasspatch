@@ -94,6 +94,7 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
                   variant="ghost"
                   className="justify-start"
                   onClick={() => {
+                    setAuthToken(null)
                     router.navigate({ to: '/admin/login' })
                   }}
                 >

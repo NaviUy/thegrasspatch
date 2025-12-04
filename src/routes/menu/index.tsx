@@ -1,13 +1,40 @@
+import { Suspense } from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
-import { useActiveSession } from '@/hooks/useActiveSession'
-import { useEffect, useState } from 'react'
 import { api } from '@/lib/apiClient'
 import { Button } from '@/components/ui/button'
 import { ProductCard } from '@/components/ProductCard'
 import { useCart } from '@/hooks/useCart'
 
 export const Route = createFileRoute('/menu/')({
-  component: RouteComponent,
+  loader: async () => {
+    const { open, session } = await api.getPublicActiveSession()
+    if (!open) return { open, session: null, items: [] }
+    const { items } = await api.getPublicMenuItems()
+    return { open, session, items }
+  },
+  errorComponent: ({ error }) => (
+    <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+      <div className="text-center space-y-2">
+        <p className="text-sm text-red-600">
+          Failed to load menu: {error?.message ?? 'Unknown error'}
+        </p>
+        <Button asChild variant="outline">
+          <Link to="/">Back home</Link>
+        </Button>
+      </div>
+    </main>
+  ),
+  component: () => (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center bg-slate-50">
+          <p className="text-sm text-slate-500">Loading menu…</p>
+        </main>
+      }
+    >
+      <RouteComponent />
+    </Suspense>
+  ),
 })
 
 type MenuItem = {
@@ -21,49 +48,12 @@ type MenuItem = {
 
 function RouteComponent() {
   const router = useRouter()
-  const {
-    loading: sessionLoading,
-    error: sessionError,
-    open,
-    session,
-  } = useActiveSession()
-  const [items, setItems] = useState<MenuItem[]>([])
-  const [itemsLoading, setItemsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { open, session, items } = Route.useLoaderData() as {
+    open: boolean
+    session: { name: string } | null
+    items: MenuItem[]
+  }
   const { items: cart, updateQuantity, totalItems, totalCents } = useCart()
-
-  const loading = sessionLoading || itemsLoading
-  const anyError = error ?? sessionError
-
-  useEffect(() => {
-    if (sessionLoading) return
-    if (!open) {
-      setItemsLoading(false)
-      return
-    }
-
-    let cancelled = false
-
-    async function loadMenu() {
-      try {
-        const { items } = await api.getPublicMenuItems()
-        if (cancelled) return
-        setItems(items as MenuItem[])
-      } catch (error: any) {
-        console.error(error)
-        if (!cancelled) {
-          setError(error.message ?? 'Failed to load menu.')
-        }
-      } finally {
-        if (!cancelled) setItemsLoading(false)
-      }
-    }
-
-    loadMenu()
-    return () => {
-      cancelled = true
-    }
-  }, [sessionLoading, open])
 
   //cart helper
   const adjustQuantity = (item: MenuItem, delta: number) => {
@@ -80,7 +70,7 @@ function RouteComponent() {
   const getQuantity = (itemId: string) =>
     cart.find((c) => c.menuItemId === itemId)?.quantity ?? 0
 
-  if (!loading && !open) {
+  if (!open) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center bg-slate-50 px-4">
         <div className="w-full max-w-xl text-center space-y-4">
@@ -94,14 +84,6 @@ function RouteComponent() {
             <Link to="/">Back to home</Link>
           </Button>
         </div>
-      </main>
-    )
-  }
-
-  if (loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-50">
-        <p className="text-sm text-slate-500">Loading menu…</p>
       </main>
     )
   }
@@ -134,11 +116,6 @@ function RouteComponent() {
       </header>
 
       <section className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 space-y-4">
-        {anyError && (
-          <div className="rounded-md bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">
-            {anyError}
-          </div>
-        )}
         <div className="flex items-baseline justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Menu</h2>

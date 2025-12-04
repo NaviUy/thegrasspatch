@@ -26,9 +26,11 @@ export function useAuthUser(options: UseAuthUserOptions = {}) {
       } catch (error: any) {
         if (cancelled) return
         console.error('Auth check error: ', error)
+        const status = error?.status
+        const unauth = status === 401 || status === 403
         setError(error.message ?? 'Not authenticated')
 
-        if (redirectToLogin) {
+        if (redirectToLogin && unauth) {
           setAuthToken(null)
           router.navigate({ to: '/admin/login' })
         }

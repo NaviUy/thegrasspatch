@@ -1,9 +1,10 @@
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { api, setAuthToken } from '../../../lib/apiClient'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useAuthUser } from '@/hooks/useAuthUser'
 
 export const Route = createFileRoute('/admin/login/')({
   component: AdminLoginPage,
@@ -11,10 +12,17 @@ export const Route = createFileRoute('/admin/login/')({
 
 function AdminLoginPage() {
   const router = useRouter()
+  const { user, loading: authLoading } = useAuthUser({ redirectToLogin: false })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.navigate({ to: '/admin' })
+    }
+  }, [authLoading, user, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

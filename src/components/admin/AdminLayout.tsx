@@ -31,7 +31,7 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
             <div className="flex flex-col">
               <span className="text-xs text-slate-500">Signed in as</span>
               <span className="text-sm font-medium text-slate-900">
-                {user?.email}
+                <a href="javascript:void(0)">{user?.email}</a>
               </span>
             </div>
           </div>

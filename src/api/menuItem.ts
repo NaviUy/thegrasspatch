@@ -78,6 +78,7 @@ export async function getActiveSession() {
     .select({
       id: schema.sessions.id,
       name: schema.sessions.name,
+      isActive: schema.sessions.isActive,
     })
     .from(schema.sessions)
     .where(eq(schema.sessions.isActive, true))

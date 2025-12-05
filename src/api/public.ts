@@ -23,8 +23,9 @@ publicRouter.get('/active-session', async (_req, res) => {
 //Get /api/public/menu-items
 publicRouter.get('/menu-items', async (_req, res) => {
   try {
+    const session = await getActiveSession()
     const items = await getActiveMenuItems()
-    return res.json({ items })
+    return res.json({ session, items })
   } catch (error: any) {
     console.error(error)
     return res.status(500).json({ error: 'Failed to load menu items.' })

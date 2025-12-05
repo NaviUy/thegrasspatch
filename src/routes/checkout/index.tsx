@@ -307,11 +307,8 @@ function RouteComponent() {
                       disabled={submitting}
                     />
                   </div>
-                  {/* Phone field temporarily disabled until SMS is ready */}
-                  {/* <div className="space-y-1.5">
-                    <Label htmlFor="customerPhone">
-                      Phone (optional, for pickup updates)
-                    </Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="customerPhone">Phone number (optional)</Label>
                     <Input
                       id="customerPhone"
                       name="customerPhone"
@@ -320,13 +317,19 @@ function RouteComponent() {
                       onChange={(e) => setCustomerPhone(e.target.value)}
                       disabled={submitting}
                     />
-                  </div> */}
+                    <p className="text-xs text-slate-500">
+                      By entering my phone number, I agree to receive recurring SMS messages
+                      from The Grass Patch about order updates. Msg & data rates may apply.
+                      Reply STOP to opt out, HELP for help.
+                    </p>
+                  </div>
 
                   <div className="flex flex-col items-center justify-between gap-2">
-                    {/* <div className="text-sm text-slate-600">
-                      We'll text you when your order is ready if you add a phone
-                      number.
-                    </div> */}
+                    <div className="text-sm text-slate-600">
+                      {customerPhone
+                        ? "We'll text you when your order is ready."
+                        : 'You can opt in to SMS updates by adding a phone number.'}
+                    </div>
                     <Button
                       className="w-full"
                       type="submit"

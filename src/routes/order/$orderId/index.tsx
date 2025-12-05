@@ -115,7 +115,7 @@ function RouteComponent() {
 
     return () => {
       cancelled = true
-      supabase.removeChannel(channel)
+      supabase?.removeChannel(channel)
     }
   }, [orderId])
 
@@ -306,7 +306,9 @@ function RouteComponent() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-slate-700">Qty {item.quantity}</p>
+                    <p className="text-sm text-slate-700">
+                      Qty {item.quantity}
+                    </p>
                     <p className="text-sm font-semibold text-slate-900">
                       ${formatDollars(item.quantity * item.unitPriceCents)}
                     </p>

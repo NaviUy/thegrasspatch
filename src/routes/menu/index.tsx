@@ -56,6 +56,8 @@ function RouteComponent() {
   }
   const { items: cart, updateQuantity, totalItems, totalCents } = useCart()
 
+  console.log(open, session, items)
+
   //cart helper
   const adjustQuantity = (item: MenuItem, delta: number) => {
     updateQuantity({

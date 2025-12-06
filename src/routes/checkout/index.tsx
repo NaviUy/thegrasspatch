@@ -53,6 +53,19 @@ function RouteComponent() {
   const [customerPhone, setCustomerPhone] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  const changeQuantity = (menuItemId: string, delta: number) => {
+    setItems((prev) => {
+      const updated = prev
+        .map((item) =>
+          item.menuItemId === menuItemId
+            ? { ...item, quantity: Math.max(0, item.quantity + delta) }
+            : item,
+        )
+        .filter((item) => item.quantity > 0)
+      return updated
+    })
+  }
+
   const refreshCart = useCallback(
     async (cartItems: CartItem[]) => {
       setRefreshing(true)
@@ -269,10 +282,29 @@ function RouteComponent() {
                             ${formatDollars(item.priceCents)} each
                           </p>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm text-slate-700">
-                            Qty {item.quantity}
-                          </p>
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => changeQuantity(item.menuItemId, -1)}
+                              disabled={item.quantity === 0}
+                            >
+                              -
+                            </Button>
+                            <span className="w-8 text-center text-sm">
+                              {item.quantity}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="default"
+                              size="icon"
+                              onClick={() => changeQuantity(item.menuItemId, +1)}
+                            >
+                              +
+                            </Button>
+                          </div>
                           <p className="text-sm font-semibold text-slate-900">
                             ${formatDollars(item.quantity * item.priceCents)}
                           </p>

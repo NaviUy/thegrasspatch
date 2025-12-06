@@ -13,7 +13,7 @@ export const publicRouter = express.Router()
 publicRouter.get('/active-session', async (_req, res) => {
   try {
     const session = await getActiveSession()
-    res.json({ open: true, ...session })
+    res.json({ open: true, session })
   } catch (error: any) {
     console.error('List menu error: ', error)
     res.status(500).json({ error: 'Failed to fetch active session.' })

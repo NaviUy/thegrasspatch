@@ -69,6 +69,7 @@ export function ProductCard({
                 src={imagePlaceholderUrl}
                 alt=""
                 aria-hidden="true"
+                draggable={false}
                 className="absolute inset-0 h-full w-full object-cover object-bottom blur-md scale-105 opacity-80"
               />
             )}
@@ -79,8 +80,9 @@ export function ProductCard({
               alt={title}
               loading="lazy"
               onLoad={() => setLoaded(true)}
+              draggable={false}
               className={cn(
-                'h-full w-full object-cover object-bottom transition duration-500 relative',
+                'h-full w-full object-cover object-bottom transition duration-500 relative select-none',
                 loaded ? 'blur-0 opacity-100' : 'blur-sm opacity-80',
               )}
             />

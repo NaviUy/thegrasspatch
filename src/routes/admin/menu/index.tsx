@@ -23,6 +23,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import { Reorder } from 'framer-motion'
 
 export const Route = createFileRoute('/admin/menu/')({
   component: RouteComponent,
@@ -235,23 +236,6 @@ function RouteComponent() {
     return null
   }
 
-  const reorderLocal = (draggedId: string, targetId: string) => {
-    setItems((prev) => {
-      const draggedIdx = prev.findIndex((i) => i.id === draggedId)
-      const targetIdx = prev.findIndex((i) => i.id === targetId)
-      if (draggedIdx === -1 || targetIdx === -1) return prev
-      const updated = [...prev]
-      const [draggedItem] = updated.splice(draggedIdx, 1)
-      updated.splice(targetIdx, 0, draggedItem)
-      // persist order
-      api.reorderMenuItems(updated.map((i) => i.id)).catch((err) => {
-        console.error(err)
-        setError(err.message ?? 'Failed to save order.')
-      })
-      return updated
-    })
-  }
-
   useEffect(() => {
     if (authLoading || !user) return
     let cancelled = false
@@ -341,6 +325,14 @@ function RouteComponent() {
       console.error(error)
       setError(error.message ?? 'Failed to delete menu item.')
     }
+  }
+
+  const handleReorder = (newOrder: MenuItem[]) => {
+    setItems(newOrder)
+    api.reorderMenuItems(newOrder.map((i) => i.id)).catch((err) => {
+      console.error(err)
+      setError(err.message ?? 'Failed to save order.')
+    })
   }
 
   if (loading) {
@@ -467,23 +459,23 @@ function RouteComponent() {
             No menu items yet. Add one above to get started.
           </p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 justify-items-center">
+          <Reorder.Group
+            as="div"
+            values={items}
+            onReorder={handleReorder}
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 justify-items-center list-none"
+          >
             {items.map((item) => (
-              <div
+              <Reorder.Item
                 key={item.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('text/plain', item.id)
-                  e.dataTransfer.effectAllowed = 'move'
+                value={item}
+                className="w-full max-w-xs justify-self-center"
+                drag
+                whileDrag={{
+                  scale: 1.02,
+                  zIndex: 1,
+                  boxShadow: '0 10px 30px rgba(15, 23, 42, 0.18)',
                 }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  const draggedId = e.dataTransfer.getData('text/plain')
-                  if (!draggedId || draggedId === item.id) return
-                  reorderLocal(draggedId, item.id)
-                }}
-                className="w-full"
               >
                 <ProductCard
                   title={item.name}
@@ -491,7 +483,7 @@ function RouteComponent() {
                   imageUrl={item.imageUrl}
                   imagePlaceholderUrl={item.imagePlaceholderUrl}
                   isActive={item.isActive}
-                  className="w-full max-w-xs cursor-move"
+                  className="w-full cursor-grab active:cursor-grabbing"
                 >
                   <EditMenuItemDialog
                     item={item}
@@ -543,9 +535,9 @@ function RouteComponent() {
                     </DialogContent>
                   </Dialog>
                 </ProductCard>
-              </div>
+              </Reorder.Item>
             ))}
-          </div>
+          </Reorder.Group>
         )}
       </section>
     </AdminLayout>

@@ -5,6 +5,7 @@ import { AdminLayout } from '@/components/admin/AdminLayout'
 import { useAuthUser } from '@/hooks/useAuthUser'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabaseClient'
+import { Reorder } from 'framer-motion'
 
 type OrderItem = {
   id: string
@@ -293,6 +294,14 @@ function RouteComponent() {
     event.preventDefault()
   }
 
+  const handleReorderMyOrders = (reordered: Order[]) => {
+    setOrders((prev) => {
+      const reorderedIds = new Set(reordered.map((o) => o.id))
+      const remaining = prev.filter((o) => !reorderedIds.has(o.id))
+      return [...reordered, ...remaining]
+    })
+  }
+
   // Realtime updates via Supabase
   useEffect(() => {
     if (!supabase || !user) return
@@ -414,18 +423,31 @@ function RouteComponent() {
                 You have no assigned orders.
               </p>
             ) : (
-              <div className="space-y-3">
+              <Reorder.Group
+                as="div"
+                axis="y"
+                values={myOrders}
+                onReorder={handleReorderMyOrders}
+                className="space-y-3 list-none"
+              >
                 {myOrders.map((order) => (
-                  <OrderCard
+                  <Reorder.Item
                     key={order.id}
-                    order={order}
-                    onAssignToMe={assignToMe}
-                    onStatusChange={changeStatus}
-                    onUnassign={unassign}
-                    canDrag={false}
-                  />
+                    value={order}
+                    as="div"
+                    className="cursor-grab active:cursor-grabbing"
+                    whileDrag={{ scale: 1.01, boxShadow: '0 8px 24px rgba(15,23,42,0.14)' }}
+                  >
+                    <OrderCard
+                      order={order}
+                      onAssignToMe={assignToMe}
+                      onStatusChange={changeStatus}
+                      onUnassign={unassign}
+                      canDrag={false}
+                    />
+                  </Reorder.Item>
                 ))}
-              </div>
+              </Reorder.Group>
             )}
 
             {assigning && (

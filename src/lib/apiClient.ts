@@ -97,6 +97,8 @@ export const api = {
     name: string
     priceCents: number
     imageUrl?: string
+    imagePlaceholderUrl?: string
+    badges?: Array<{ label: string; color?: string }>
     isActive: boolean
   }) =>
     request<{ item: any }>('/api/menu-items', {
@@ -108,7 +110,9 @@ export const api = {
     updates: Partial<{
       name: string
       priceCents: number
-      imageUrl?: string
+      imageUrl?: string | null
+      imagePlaceholderUrl?: string | null
+      badges?: Array<{ label: string; color?: string }>
       isActive: boolean
     }>,
   ) =>

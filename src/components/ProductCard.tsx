@@ -61,15 +61,15 @@ export function ProductCard({
       )}
     >
       {/* Image area */}
-      <div className="relative">
+      <div className="relative w-full aspect-[4/3] bg-slate-200">
         {imageUrl ? (
-          <div className="h-60 w-full overflow-hidden relative bg-slate-200">
+          <div className="absolute inset-0 overflow-hidden">
             {imagePlaceholderUrl && (
               <img
                 src={imagePlaceholderUrl}
                 alt=""
                 aria-hidden="true"
-                className="absolute inset-0 h-full w-full object-cover blur-md scale-105 opacity-80"
+                className="absolute inset-0 h-full w-full object-cover object-bottom blur-md scale-105 opacity-80"
               />
             )}
             <img
@@ -80,13 +80,13 @@ export function ProductCard({
               loading="lazy"
               onLoad={() => setLoaded(true)}
               className={cn(
-                'h-60 w-full object-cover transition duration-500 relative',
+                'h-full w-full object-cover object-bottom transition duration-500 relative',
                 loaded ? 'blur-0 opacity-100' : 'blur-sm opacity-80',
               )}
             />
           </div>
         ) : (
-          <div className="h-60 w-full bg-slate-200 flex items-center justify-center text-xs text-slate-600">
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-600">
             No image
           </div>
         )}
@@ -99,24 +99,23 @@ export function ProductCard({
             {statusLabel}
           </span>
         )}
+
+        {badges.length > 0 && (
+          <div className="absolute right-3 top-3 flex flex-wrap gap-2 justify-end">
+            {badges.map((badge, idx) => (
+              <span
+                key={`${badge.label}-${idx}`}
+                className="text-[11px] font-semibold px-2 py-1 rounded-full bg-white/25 backdrop-blur-sm text-slate-800 shadow-sm"
+              >
+                {badge.label}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
-      {badges.length > 0 && (
-        <div className="px-4 pt-3 flex flex-wrap gap-2">
-          {badges.map((badge, idx) => (
-            <span
-              key={`${badge.label}-${idx}`}
-              className="text-[11px] font-semibold px-2 py-1 rounded-full"
-              style={{ backgroundColor: badge.color || '#e2e8f0', color: '#0f172a' }}
-            >
-              {badge.label}
-            </span>
-          ))}
-        </div>
-      )}
-
       {/* Content */}
-      <div className="px-4 py-4 space-y-2">
+      <div className="flex-1 px-4 py-4 space-y-2">
         <div>
           <h4 className="text-base font-semibold text-slate-900 truncate">
             {title}

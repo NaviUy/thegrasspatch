@@ -1,5 +1,10 @@
-import { createFileRoute, Link, useRouter, redirect } from '@tanstack/react-router'
-import { useState } from 'react'
+import {
+  createFileRoute,
+  Link,
+  useRouter,
+  redirect,
+} from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { api, setAuthToken } from '../../../lib/apiClient'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +33,29 @@ function AdminLoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [apiHealthy, setApiHealthy] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const checkHealth = async () => {
+      try {
+        const res = await api.health()
+        if (!cancelled) setApiHealthy(res.ok === true)
+      } catch (err) {
+        console.error('Health check failed', err)
+        if (!cancelled) setApiHealthy(false)
+      }
+    }
+
+    checkHealth()
+    const interval = setInterval(checkHealth, 30000)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,8 +73,8 @@ function AdminLoginPage() {
   }
 
   return (
-    <section className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="w-full max-w-md bg-white rounded-xl shadow p-8 space-y-6 mx-4">
+    <section className="min-h-screen flex flex-col gap-4 items-center justify-center bg-slate-50">
+      <div className=" max-w-md bg-white rounded-xl shadow p-8 space-y-6 mx-4">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold text-slate-900">Admin Login</h1>
           <Button variant="outline" size="sm" asChild>
@@ -94,6 +122,25 @@ function AdminLoginPage() {
           </Link>
           .
         </p>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-slate-600">
+        <span>API</span>
+        <span
+          aria-label={
+            apiHealthy === null
+              ? 'Checking API'
+              : apiHealthy
+                ? 'API reachable'
+                : 'API unreachable'
+          }
+          className={`h-2.5 w-2.5 rounded-full ${
+            apiHealthy === null
+              ? 'bg-slate-300 animate-pulse'
+              : apiHealthy
+                ? 'bg-emerald-500'
+                : 'bg-red-500'
+          }`}
+        />
       </div>
     </section>
   )

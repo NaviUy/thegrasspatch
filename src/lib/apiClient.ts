@@ -163,6 +163,7 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }),
+  health: () => request<{ ok: boolean }>('/api/health'),
   reorderMenuItems: (ids: string[]) =>
     request<{ items: any[] }>('/api/menu-items/reorder', {
       method: 'POST',

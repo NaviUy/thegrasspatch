@@ -58,7 +58,9 @@ function RouteComponent() {
   const [order, setOrder] = useState<Order | null>(null)
   const [trackingJwt, setTrackingJwt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
   const [error, setError] = useState<string | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -119,13 +121,35 @@ function RouteComponent() {
           }
         },
       )
-      .subscribe()
+
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setIsConnected(true)
+        } else {
+          setIsConnected(false)
+        }
+      })
 
     return () => {
       cancelled = true
       supabase?.removeChannel(channel)
     }
   }, [orderId, trackingJwt])
+
+  // Polling fallback: refresh every 10 seconds ONLY if not connected
+  useEffect(() => {
+    if (!orderId || isConnected) return
+    const interval = setInterval(() => {
+      api
+        .getPublicOrder(orderId)
+        .then(({ order, trackingJwt }) => {
+          setOrder(order as Order)
+          if (trackingJwt) setTrackingJwt(trackingJwt)
+        })
+        .catch((err) => console.error('Polling error:', err))
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [orderId, isConnected])
 
   const trackerIndex = useMemo(() => {
     const key = (order?.status ?? 'PENDING').toUpperCase()

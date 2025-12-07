@@ -266,6 +266,7 @@ app.post('/api/invites', requireAuth, async (req, res) => {
 app.get('/api/menu-items', requireAuth, async (_req, res) => {
   try {
     const items = await listMenuItems()
+    res.set('Cache-Control', 'public, max-age=60')
     res.json({ items })
   } catch (error: any) {
     console.error('List menu error: ', error)

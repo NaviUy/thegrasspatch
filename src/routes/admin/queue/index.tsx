@@ -328,6 +328,7 @@ function RouteComponent() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
         async (payload) => {
+          console.log('Realtime event received:', payload)
           const sessionId =
             (payload.new as any)?.session_id ?? (payload.old as any)?.session_id
           if (activeSessionId && sessionId && sessionId !== activeSessionId) {
@@ -339,7 +340,17 @@ function RouteComponent() {
           })
         },
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log('Supabase Realtime status:', status)
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to orders channel')
+        }
+        if (status === 'CHANNEL_ERROR') {
+          console.error('Supabase Realtime channel error. Check RLS policies or JWT.')
+        }
+      })
+
+    console.log('Initializing Supabase Realtime with token:', user.supabaseJwt ? 'PRESENT' : 'MISSING')
 
     return () => {
       cancelled = true

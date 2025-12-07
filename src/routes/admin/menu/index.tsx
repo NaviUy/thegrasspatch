@@ -34,7 +34,7 @@ type MenuItem = {
   priceCents: number
   imageUrl?: string | null
   imagePlaceholderUrl?: string | null
-  badges?: Array<{ label: string; color: string }> | null
+  badges?: Array<{ label: string; color?: string }> | null
   isActive: boolean
 }
 
@@ -43,13 +43,15 @@ type EditMenuItemDialogProps = {
   onUpdated: (updated: MenuItem) => void
 }
 
+type BadgeForm = { label: string }
+
 function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(item.name)
   const [price, setPrice] = useState((item.priceCents / 100).toFixed(2))
   const [imageFile, setImageFile] = useState<File | null>(null)
-  const [badges, setBadges] = useState<Array<{ label: string; color: string }>>(
-    item.badges ?? [],
+  const [badges, setBadges] = useState<BadgeForm[]>(
+    item.badges?.map((b) => ({ label: b.label })) ?? [],
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -83,7 +85,7 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
         priceCents,
         imageUrl: uploadedUrl,
         imagePlaceholderUrl: uploadedPlaceholder,
-        badges,
+        badges: badges.map((b) => ({ label: b.label, color: '#000000' })),
       })
       onUpdated(updated)
       setOpen(false) // ✅ only close on success
@@ -233,9 +235,7 @@ function RouteComponent() {
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
-  const [badges, setBadges] = useState<Array<{ label: string; color: string }>>(
-    [],
-  )
+  const [badges, setBadges] = useState<BadgeForm[]>([])
   const [creating, setCreating] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -299,7 +299,7 @@ function RouteComponent() {
         priceCents,
         imageUrl: uploadedUrl,
         imagePlaceholderUrl: uploadedPlaceholder,
-        badges,
+        badges: badges.map((b) => ({ label: b.label, color: '#000000' })),
         isActive: true,
       })
 
@@ -418,17 +418,6 @@ function RouteComponent() {
                           setBadges((prev) =>
                             prev.map((b, i) =>
                               i === idx ? { ...b, label: e.target.value } : b,
-                            ),
-                          )
-                        }
-                      />
-                      <Input
-                        value={badge.color}
-                        placeholder="#10b981"
-                        onChange={(e) =>
-                          setBadges((prev) =>
-                            prev.map((b, i) =>
-                              i === idx ? { ...b, color: e.target.value } : b,
                             ),
                           )
                         }

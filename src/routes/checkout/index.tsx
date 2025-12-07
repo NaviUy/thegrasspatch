@@ -6,6 +6,7 @@ import { api } from '@/lib/apiClient'
 import { useActiveSession } from '@/hooks/useActiveSession'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { toast } from 'sonner'
 
 type RemovedCartItem = {
   menuItemId: string
@@ -64,6 +65,7 @@ function RouteComponent() {
         .filter((item) => item.quantity > 0)
       return updated
     })
+    toast.success('Cart updated')
   }
 
   const refreshCart = useCallback(

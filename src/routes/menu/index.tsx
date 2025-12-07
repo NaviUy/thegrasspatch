@@ -4,6 +4,7 @@ import { api } from '@/lib/apiClient'
 import { Button } from '@/components/ui/button'
 import { ProductCard } from '@/components/ProductCard'
 import { useCart } from '@/hooks/useCart'
+import { toast } from 'sonner'
 
 export const Route = createFileRoute('/menu/')({
   loader: async () => {
@@ -66,6 +67,11 @@ function RouteComponent() {
       // cart currently ignores placeholder; keeping API unchanged
       delta,
     })
+    if (delta > 0) {
+      toast.success(`Added ${item.name} to cart`)
+    } else if (delta < 0) {
+      toast.success(`Removed ${item.name} from cart`)
+    }
   }
 
   const getQuantity = (itemId: string) =>

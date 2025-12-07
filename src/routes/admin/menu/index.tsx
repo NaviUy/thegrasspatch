@@ -73,9 +73,8 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
         item.imagePlaceholderUrl ?? null
 
       if (imageFile) {
-        const { publicUrl, placeholderUrl } = await api.uploadMenuImage(
-          imageFile,
-        )
+        const { publicUrl, placeholderUrl } =
+          await api.uploadMenuImage(imageFile)
         uploadedUrl = publicUrl
         uploadedPlaceholder = placeholderUrl
       }
@@ -107,7 +106,7 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit “{item.name}”</DialogTitle>
+          <DialogTitle>Edit "{item.name}"</DialogTitle>
           <DialogDescription>
             Update the details for this menu item.
           </DialogDescription>
@@ -162,17 +161,6 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
                     setBadges((prev) =>
                       prev.map((b, i) =>
                         i === idx ? { ...b, label: e.target.value } : b,
-                      ),
-                    )
-                  }
-                />
-                <Input
-                  value={badge.color}
-                  placeholder="#10b981"
-                  onChange={(e) =>
-                    setBadges((prev) =>
-                      prev.map((b, i) =>
-                        i === idx ? { ...b, color: e.target.value } : b,
                       ),
                     )
                   }
@@ -256,12 +244,10 @@ function RouteComponent() {
       const [draggedItem] = updated.splice(draggedIdx, 1)
       updated.splice(targetIdx, 0, draggedItem)
       // persist order
-      api
-        .reorderMenuItems(updated.map((i) => i.id))
-        .catch((err) => {
-          console.error(err)
-          setError(err.message ?? 'Failed to save order.')
-        })
+      api.reorderMenuItems(updated.map((i) => i.id)).catch((err) => {
+        console.error(err)
+        setError(err.message ?? 'Failed to save order.')
+      })
       return updated
     })
   }
@@ -306,9 +292,8 @@ function RouteComponent() {
       let uploadedPlaceholder: string | undefined
 
       if (imageFile) {
-        const { publicUrl, placeholderUrl } = await api.uploadMenuImage(
-          imageFile,
-        )
+        const { publicUrl, placeholderUrl } =
+          await api.uploadMenuImage(imageFile)
         uploadedUrl = publicUrl
         uploadedPlaceholder = placeholderUrl
       }
@@ -477,11 +462,11 @@ function RouteComponent() {
 
       <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4 mt-4">
         <h3 className="text-md font-semibold text-slate-900">Existing items</h3>
-          {items.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              No menu items yet. Add one above to get started.
-            </p>
-          ) : (
+        {items.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            No menu items yet. Add one above to get started.
+          </p>
+        ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 justify-items-center">
             {items.map((item) => (
               <div
@@ -500,23 +485,22 @@ function RouteComponent() {
                 }}
                 className="w-full"
               >
-              <ProductCard
-                title={item.name}
-                priceCents={item.priceCents}
-                imageUrl={item.imageUrl}
-                imagePlaceholderUrl={item.imagePlaceholderUrl}
-                badges={item.badges ?? []}
-                isActive={item.isActive}
-                className="w-full max-w-xs cursor-move"
-              >
-                <EditMenuItemDialog
-                  item={item}
-                  onUpdated={(updated) =>
-                    setItems((prev) =>
-                      prev.map((i) => (i.id === updated.id ? updated : i)),
-                    )
-                  }
-                />
+                <ProductCard
+                  title={item.name}
+                  priceCents={item.priceCents}
+                  imageUrl={item.imageUrl}
+                  imagePlaceholderUrl={item.imagePlaceholderUrl}
+                  isActive={item.isActive}
+                  className="w-full max-w-xs cursor-move"
+                >
+                  <EditMenuItemDialog
+                    item={item}
+                    onUpdated={(updated) =>
+                      setItems((prev) =>
+                        prev.map((i) => (i.id === updated.id ? updated : i)),
+                      )
+                    }
+                  />
 
                   <Button
                     variant="outline"
@@ -535,10 +519,10 @@ function RouteComponent() {
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Delete “{item.name}”?</DialogTitle>
-                      <DialogDescription>
+                        <DialogDescription>
                           This will remove the item from the menu. You won’t be
                           able to undo this action.
-                      </DialogDescription>
+                        </DialogDescription>
                       </DialogHeader>
                       <DialogFooter className="flex justify-end gap-2">
                         <DialogClose asChild>

@@ -39,13 +39,12 @@ const STATUS_OPTIONS: Array<{
 type StatusFilter = 'PENDING' | 'MAKING' | 'READY' | 'ALL'
 
 const STATUS_FILTERS: Array<{
-  value: StatusFilter
+  value: Exclude<StatusFilter, 'ALL'>
   label: string
 }> = [
   { value: 'PENDING', label: 'Pending' },
   { value: 'MAKING', label: 'Making' },
   { value: 'READY', label: 'Ready' },
-  { value: 'ALL', label: 'All' },
 ]
 
 export const Route = createFileRoute('/admin/queue/')({
@@ -171,7 +170,9 @@ function RouteComponent() {
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
   const [unassigning, setUnassigning] = useState<string | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('PENDING')
+  const [selectedStatuses, setSelectedStatuses] = useState<
+    Set<Exclude<StatusFilter, 'ALL'>>
+  >(new Set(['PENDING', 'MAKING']))
 
   const upsertOrder = useCallback((order: Order) => {
     setOrders((prev) => {
@@ -238,9 +239,21 @@ function RouteComponent() {
   )
 
   const filteredOrders = useMemo(() => {
-    if (statusFilter === 'ALL') return orders
-    return orders.filter((o) => o.status === statusFilter)
-  }, [orders, statusFilter])
+    if (selectedStatuses.size === 0) return orders
+    return orders.filter((o) => selectedStatuses.has(o.status))
+  }, [orders, selectedStatuses])
+
+  const toggleStatusFilter = (status: Exclude<StatusFilter, 'ALL'>) => {
+    setSelectedStatuses((prev) => {
+      const next = new Set(prev)
+      if (next.has(status)) {
+        next.delete(status)
+      } else {
+        next.add(status)
+      }
+      return next
+    })
+  }
 
   const assignToMe = async (orderId: string) => {
     setAssigning(orderId)
@@ -365,8 +378,10 @@ function RouteComponent() {
               <Button
                 key={opt.value}
                 size="sm"
-                variant={statusFilter === opt.value ? 'default' : 'outline'}
-                onClick={() => setStatusFilter(opt.value)}
+                variant={
+                  selectedStatuses.has(opt.value) ? 'default' : 'outline'
+                }
+                onClick={() => toggleStatusFilter(opt.value)}
               >
                 {opt.label}
               </Button>

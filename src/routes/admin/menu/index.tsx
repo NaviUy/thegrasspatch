@@ -172,7 +172,7 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
                     setBadges((prev) => prev.filter((_, i) => i !== idx))
                   }
                 >
-                  ✕
+                  x
                 </Button>
               </div>
             ))}

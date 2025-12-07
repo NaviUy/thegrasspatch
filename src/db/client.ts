@@ -9,9 +9,10 @@ export const pool = new Pool({
   ssl: {
     rejectUnauthorized: false, // needed for Supabase in many local setups
   },
-  max: 10, // max concurrent connections
+  max: 1, // max concurrent connections (keep low for Lambda)
   idleTimeoutMillis: 30000, // close idle clients after 30s
-  connectionTimeoutMillis: 5000, // fail fast if DB can’t be reached
+  connectionTimeoutMillis: 30000, // wait up to 30s for connection (helps with cold starts)
+  keepAlive: true,
 })
 
 pool.on('error', (err) => {

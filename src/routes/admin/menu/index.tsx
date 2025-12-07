@@ -227,7 +227,7 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
 function RouteComponent() {
   const router = useRouter()
   const { user, loading: authLoading, error: authError } = useAuthUser()
-  const [items, setItems] = useState<any[]>([])
+  const [items, setItems] = useState<MenuItem[]>([])
   const [itemsLoading, setItemsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -245,6 +245,25 @@ function RouteComponent() {
   if (user?.role === 'WORKER') {
     router.navigate({ to: '/admin/queue' })
     return null
+  }
+
+  const reorderLocal = (draggedId: string, targetId: string) => {
+    setItems((prev) => {
+      const draggedIdx = prev.findIndex((i) => i.id === draggedId)
+      const targetIdx = prev.findIndex((i) => i.id === targetId)
+      if (draggedIdx === -1 || targetIdx === -1) return prev
+      const updated = [...prev]
+      const [draggedItem] = updated.splice(draggedIdx, 1)
+      updated.splice(targetIdx, 0, draggedItem)
+      // persist order
+      api
+        .reorderMenuItems(updated.map((i) => i.id))
+        .catch((err) => {
+          console.error(err)
+          setError(err.message ?? 'Failed to save order.')
+        })
+      return updated
+    })
   }
 
   useEffect(() => {
@@ -458,23 +477,38 @@ function RouteComponent() {
 
       <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4 mt-4">
         <h3 className="text-md font-semibold text-slate-900">Existing items</h3>
-        {items.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            No menu items yet. Add one above to get started.
-          </p>
-        ) : (
+          {items.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              No menu items yet. Add one above to get started.
+            </p>
+          ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 justify-items-center">
-            {items.map((item: any) => (
-                <ProductCard
-                  key={item.id}
-                  title={item.name}
-                  priceCents={item.priceCents}
-                  imageUrl={item.imageUrl}
-                  imagePlaceholderUrl={item.imagePlaceholderUrl}
-                  isActive={item.isActive}
-                  className="w-full max-w-xs" // ⬅️ key line
-                >
-                {/* Edit / Hide / Delete buttons */}
+            {items.map((item) => (
+              <div
+                key={item.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', item.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const draggedId = e.dataTransfer.getData('text/plain')
+                  if (!draggedId || draggedId === item.id) return
+                  reorderLocal(draggedId, item.id)
+                }}
+                className="w-full"
+              >
+              <ProductCard
+                title={item.name}
+                priceCents={item.priceCents}
+                imageUrl={item.imageUrl}
+                imagePlaceholderUrl={item.imagePlaceholderUrl}
+                badges={item.badges ?? []}
+                isActive={item.isActive}
+                className="w-full max-w-xs cursor-move"
+              >
                 <EditMenuItemDialog
                   item={item}
                   onUpdated={(updated) =>
@@ -484,47 +518,48 @@ function RouteComponent() {
                   }
                 />
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleToggleActive(item)}
-                >
-                  {item.isActive ? 'Hide' : 'Show'}
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleToggleActive(item)}
+                  >
+                    {item.isActive ? 'Hide' : 'Show'}
+                  </Button>
 
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="destructive" size="sm">
-                      Delete
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Delete “{item.name}”?</DialogTitle>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        Delete
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Delete “{item.name}”?</DialogTitle>
                       <DialogDescription>
-                        This will remove the item from the menu. You won’t be
-                        able to undo this action.
+                          This will remove the item from the menu. You won’t be
+                          able to undo this action.
                       </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter className="flex justify-end gap-2">
-                      <DialogClose asChild>
-                        <Button variant="outline" size="sm">
-                          Cancel
-                        </Button>
-                      </DialogClose>
-                      <DialogClose asChild>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDelete(item)}
-                        >
-                          Delete
-                        </Button>
-                      </DialogClose>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </ProductCard>
+                      </DialogHeader>
+                      <DialogFooter className="flex justify-end gap-2">
+                        <DialogClose asChild>
+                          <Button variant="outline" size="sm">
+                            Cancel
+                          </Button>
+                        </DialogClose>
+                        <DialogClose asChild>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(item)}
+                          >
+                            Delete
+                          </Button>
+                        </DialogClose>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </ProductCard>
+              </div>
             ))}
           </div>
         )}

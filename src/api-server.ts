@@ -31,6 +31,7 @@ import {
 } from './api/order'
 import { db, schema } from './db/client'
 import { supabaseService } from './lib/supabaseServiceClient'
+import { reorderMenuItems } from './api/menuItem'
 
 const MENU_IMAGE_BUCKET = process.env.SUPABASE_MENU_BUCKET || 'menu-images'
 const upload = multer({
@@ -388,6 +389,24 @@ app.patch('/api/menu-items/:id', requireAuth, async (req, res) => {
     res
       .status(400)
       .json({ error: error?.message ?? 'Failed to update menu item' })
+  }
+})
+
+// reorder menu items (Admin only)
+app.post('/api/menu-items/reorder', requireAuth, async (req, res) => {
+  if (req.user?.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Only admins can reorder menu items.' })
+  }
+  const { ids } = req.body ?? {}
+  if (!Array.isArray(ids) || ids.some((id: any) => typeof id !== 'string')) {
+    return res.status(400).json({ error: 'ids must be an array of strings.' })
+  }
+  try {
+    const items = await reorderMenuItems(ids)
+    res.json({ items })
+  } catch (error: any) {
+    console.error('Reorder menu items error: ', error)
+    res.status(500).json({ error: 'Failed to reorder menu items.' })
   }
 })
 

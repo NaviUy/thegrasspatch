@@ -159,6 +159,11 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }),
+  reorderMenuItems: (ids: string[]) =>
+    request<{ items: any[] }>('/api/menu-items/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
   uploadMenuImage: async (file: File) => {
     const token = getAuthToken()
     const formData = new FormData()

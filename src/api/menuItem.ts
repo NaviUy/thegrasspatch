@@ -1,5 +1,5 @@
 import { schema, db } from '@/db/client'
-import { desc, eq, inArray } from 'drizzle-orm'
+import { asc, desc, eq, inArray } from 'drizzle-orm'
 
 export type NewMenuItemInput = {
   name: string
@@ -7,6 +7,7 @@ export type NewMenuItemInput = {
   imageUrl?: string | null
   imagePlaceholderUrl?: string | null
   badges?: Array<{ label: string; color: string }> | null
+  position?: number | null
   isActive?: boolean
 }
 
@@ -14,7 +15,7 @@ export async function listMenuItems() {
   return await db
     .select()
     .from(schema.menuItems)
-    .orderBy(desc(schema.menuItems.createdAt))
+    .orderBy(asc(schema.menuItems.position), desc(schema.menuItems.createdAt))
 }
 
 export async function createMenuItem(input: NewMenuItemInput) {
@@ -26,6 +27,7 @@ export async function createMenuItem(input: NewMenuItemInput) {
       imageUrl: input.imageUrl ?? null,
       imagePlaceholderUrl: input.imagePlaceholderUrl ?? null,
       badges: input.badges ?? null,
+      position: input.position ?? Date.now(),
       isActive: input.isActive ?? true,
     })
     .returning()
@@ -49,6 +51,7 @@ export async function updateMenuItem(
         : {}),
       ...(updates.badges !== undefined ? { badges: updates.badges } : {}),
       ...(updates.isActive !== undefined ? { isActive: updates.isActive } : {}),
+      ...(updates.position !== undefined ? { position: updates.position } : {}),
     })
     .where(eq(schema.menuItems.id, id))
     .returning()
@@ -91,6 +94,21 @@ export async function getActiveSession() {
   return session
 }
 
+export async function reorderMenuItems(ids: string[]) {
+  const updates: any[] = []
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i]
+    const position = i + 1
+    const [item] = await db
+      .update(schema.menuItems)
+      .set({ position })
+      .where(eq(schema.menuItems.id, id))
+      .returning()
+    if (item) updates.push(item)
+  }
+  return updates
+}
+
 export async function getActiveMenuItems() {
   const items = await db
     .select({
@@ -100,10 +118,12 @@ export async function getActiveMenuItems() {
       imageUrl: schema.menuItems.imageUrl,
       imagePlaceholderUrl: schema.menuItems.imagePlaceholderUrl,
       badges: schema.menuItems.badges,
+      position: schema.menuItems.position,
       isActive: schema.menuItems.isActive,
     })
     .from(schema.menuItems)
     .where(eq(schema.menuItems.isActive, true))
+    .orderBy(asc(schema.menuItems.position), desc(schema.menuItems.createdAt))
 
   return items
 }

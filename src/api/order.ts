@@ -1,11 +1,28 @@
 import { db, schema } from '@/db/client'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getActiveSession, refreshCartItems } from './menuItem'
+import jwt from 'jsonwebtoken'
 
 export type CreatePublicOrderInput = {
   customerName: string
   customerPhone?: string | null
   items: Array<{ menuItemId: string; quantity: number; name?: string }>
+}
+
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET
+
+function signTrackingToken(token: string) {
+  if (!SUPABASE_JWT_SECRET) {
+    throw new Error('SUPABASE_JWT_SECRET is not configured.')
+  }
+  return jwt.sign(
+    {
+      role: 'anon',
+      tracking_token: token,
+    },
+    SUPABASE_JWT_SECRET,
+    { expiresIn: '12h', issuer: 'supabase', audience: 'authenticated' },
+  )
 }
 
 export async function createPublicOrder(input: CreatePublicOrderInput) {
@@ -47,8 +64,11 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
     return order
   })
 
+  const trackingJwt = signTrackingToken(result.trackingToken)
+
   return {
     order: result,
+    trackingJwt,
     removed,
   }
 }
@@ -65,6 +85,7 @@ export async function getPublicOrder(orderId: string) {
       assignedWorkerName: schema.users.name,
       assignedAt: schema.orders.assignedAt,
       totalPriceCents: schema.orders.totalPriceCents,
+      trackingToken: schema.orders.trackingToken,
       createdAt: schema.orders.createdAt,
       updatedAt: schema.orders.updatedAt,
     })
@@ -98,6 +119,7 @@ export async function getPublicOrder(orderId: string) {
   return {
     ...order,
     items,
+    trackingJwt: signTrackingToken(order.trackingToken),
   }
 }
 

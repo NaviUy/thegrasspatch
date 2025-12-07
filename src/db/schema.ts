@@ -92,6 +92,8 @@ export const orders = pgTable('orders', {
 
   totalPriceCents: integer('total_price_cents').notNull().default(0),
 
+  trackingToken: uuid('tracking_token').notNull().defaultRandom(),
+
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),

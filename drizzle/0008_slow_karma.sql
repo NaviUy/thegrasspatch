@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "tracking_token" uuid DEFAULT gen_random_uuid() NOT NULL;

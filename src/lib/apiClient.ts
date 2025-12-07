@@ -139,12 +139,15 @@ export const api = {
     customerPhone?: string | null
     items: Array<{ menuItemId: string; quantity: number; name?: string }>
   }) =>
-    request<{ order: any; removed: any[] }>('/api/public/orders', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
+    request<{ order: any; removed: any[]; trackingJwt: string }>(
+      '/api/public/orders',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    ),
   getPublicOrder: (id: string) =>
-    request<{ order: any }>(`/api/public/orders/${id}`),
+    request<{ order: any; trackingJwt: string }>(`/api/public/orders/${id}`),
   listActiveOrders: (status?: 'PENDING' | 'MAKING' | 'READY' | 'ALL') => {
     const query =
       status && status !== 'ALL' ? `?status=${encodeURIComponent(status)}` : ''

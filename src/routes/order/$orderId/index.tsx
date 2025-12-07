@@ -19,6 +19,7 @@ type Order = {
   customerPhone?: string | null
   totalPriceCents: number
   createdAt?: string
+  trackingJwt?: string
   items: OrderItem[]
 }
 
@@ -55,6 +56,7 @@ function formatDollars(cents: number) {
 function RouteComponent() {
   const { orderId } = Route.useParams()
   const [order, setOrder] = useState<Order | null>(null)
+  const [trackingJwt, setTrackingJwt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -66,9 +68,10 @@ function RouteComponent() {
 
     async function load() {
       try {
-        const { order } = await api.getPublicOrder(orderId)
+        const { order, trackingJwt } = await api.getPublicOrder(orderId)
         if (cancelled) return
         setOrder(order as Order)
+        setTrackingJwt(trackingJwt ?? null)
       } catch (err: any) {
         console.error(err)
         if (!cancelled) {
@@ -86,8 +89,10 @@ function RouteComponent() {
   }, [orderId])
 
   useEffect(() => {
-    if (!supabase) return
+    if (!supabase || !trackingJwt) return
     let cancelled = false
+
+    supabase.realtime.setAuth(trackingJwt)
 
     const channel = supabase
       .channel(`public-order-${orderId}`)
@@ -101,8 +106,11 @@ function RouteComponent() {
         },
         async () => {
           try {
-            const { order } = await api.getPublicOrder(orderId)
-            if (!cancelled) setOrder(order as Order)
+            const { order, trackingJwt } = await api.getPublicOrder(orderId)
+            if (!cancelled) {
+              setOrder(order as Order)
+              setTrackingJwt(trackingJwt ?? null)
+            }
           } catch (err: any) {
             console.error(err)
             if (!cancelled) {
@@ -117,7 +125,7 @@ function RouteComponent() {
       cancelled = true
       supabase?.removeChannel(channel)
     }
-  }, [orderId])
+  }, [orderId, trackingJwt])
 
   const trackerIndex = useMemo(() => {
     const key = (order?.status ?? 'PENDING').toUpperCase()

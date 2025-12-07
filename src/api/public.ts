@@ -104,7 +104,7 @@ publicRouter.post('/orders', async (req, res) => {
   }
 
   try {
-    const { order, removed } = await createPublicOrder({
+    const { order, removed, trackingJwt } = await createPublicOrder({
       customerName: customerName.trim(),
       customerPhone:
         customerPhone && typeof customerPhone === 'string'
@@ -120,7 +120,7 @@ publicRouter.post('/orders', async (req, res) => {
       })
     }
 
-    return res.status(201).json({ order, removed })
+    return res.status(201).json({ order, removed, trackingJwt })
   } catch (error: any) {
     console.error('Create public order error: ', error)
     return res.status(500).json({ error: 'Failed to create order.' })
@@ -137,7 +137,7 @@ publicRouter.get('/orders/:id', async (req, res) => {
 
   try {
     const order = await getPublicOrder(id)
-    return res.json({ order })
+    return res.json({ order, trackingJwt: order.trackingJwt })
   } catch (error: any) {
     if (error?.message === 'Order not found.') {
       return res.status(404).json({ error: 'Order not found.' })

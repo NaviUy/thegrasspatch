@@ -25,6 +25,7 @@ publicRouter.get('/menu-items', async (_req, res) => {
   try {
     const session = await getActiveSession()
     const items = await getActiveMenuItems()
+    res.set('Cache-Control', 'public, max-age=60')
     return res.json({ session, items })
   } catch (error: any) {
     console.error(error)

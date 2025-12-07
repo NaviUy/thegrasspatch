@@ -319,6 +319,9 @@ function RouteComponent() {
   useEffect(() => {
     if (!supabase || !user) return
     let cancelled = false
+    if (user.supabaseJwt) {
+      supabase.realtime.setAuth(user.supabaseJwt)
+    }
     const channel = supabase
       .channel('orders-realtime')
       .on(
@@ -340,7 +343,7 @@ function RouteComponent() {
 
     return () => {
       cancelled = true
-      supabase.removeChannel(channel)
+      supabase?.removeChannel(channel)
     }
   }, [activeSessionId, fetchOrders, user])
 

@@ -8,6 +8,7 @@ import {
   getUserFromToken,
   loginWithPassword,
   signupWithInvite,
+  signSupabaseToken,
 } from './api/auth'
 import {
   activateSession,
@@ -147,7 +148,8 @@ app.post('/api/auth/login', async (req, res) => {
  * headers: Authorization: Bearer <token>
  */
 app.get('/api/auth/me', requireAuth, async (req, res) => {
-  res.json({ user: req.user })
+  const supabaseJwt = signSupabaseToken(req.user!)
+  res.json({ user: req.user, supabaseJwt })
 })
 
 app.patch('/api/auth/me', requireAuth, async (req, res) => {

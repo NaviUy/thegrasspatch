@@ -20,9 +20,9 @@ export function useAuthUser(options: UseAuthUserOptions = {}) {
 
     async function load() {
       try {
-        const res = await api.me()
+        const res = (await api.me()) as any
         if (cancelled) return
-        setUser(res.user)
+        setUser({ ...res.user, supabaseJwt: res.supabaseJwt })
       } catch (error: any) {
         if (cancelled) return
         console.error('Auth check error: ', error)

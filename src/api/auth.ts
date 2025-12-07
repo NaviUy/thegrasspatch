@@ -8,6 +8,29 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET is not set')
 }
 
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET as string
+if (!SUPABASE_JWT_SECRET) {
+  throw new Error('SUPABASE_JWT_SECRET is not set')
+}
+
+export function signSupabaseToken(user: { id: string; role: string }) {
+  // Supabase expects 'role' to be 'authenticated' for logged-in users
+  // We store the actual app role (ADMIN/WORKER) in 'app_role' claim
+  return jwt.sign(
+    {
+      sub: user.id,
+      role: 'authenticated',
+      app_role: user.role,
+    },
+    SUPABASE_JWT_SECRET,
+    {
+      expiresIn: '7d',
+      issuer: 'supabase',
+      audience: 'authenticated',
+    },
+  )
+}
+
 //Shape of JWT payload
 export type AuthTokenPayload = {
   sub: string
@@ -91,6 +114,7 @@ export async function signupWithInvite(params: {
 
   return {
     token,
+    supabaseJwt: signSupabaseToken(user),
     user: sanitizeUser(user),
   }
 }
@@ -131,6 +155,7 @@ export async function loginWithPassword(params: {
 
   return {
     token,
+    supabaseJwt: signSupabaseToken(user),
     user: sanitizeUser(user),
   }
 }

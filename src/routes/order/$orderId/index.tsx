@@ -157,6 +157,12 @@ function RouteComponent() {
     return idx === -1 ? 0 : idx
   }, [order])
 
+  const tipUrl = useMemo(() => {
+    const url = new URL('https://buy.stripe.com/5kQ3cwcmC9OQ4PX9iv1VK00')
+    url.searchParams.set('client_reference_id', orderId)
+    return url.toString()
+  }, [orderId])
+
   const progressPercent = useMemo(() => {
     if (TRACKING_STEPS.length <= 1) return 100
     return (trackerIndex / (TRACKING_STEPS.length - 1)) * 100
@@ -358,6 +364,27 @@ function RouteComponent() {
               </div>
               <Button asChild variant="outline" size="sm">
                 <Link to="/menu">Order more</Link>
+              </Button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
+                  Want to leave a tip?
+                </p>
+                <p className="text-sm text-slate-600">
+                  Add a tip and support the team (opens in a new tab).
+                </p>
+              </div>
+              <Button asChild>
+                <a
+                  href={tipUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto text-center"
+                >
+                  Tip the team
+                </a>
               </Button>
             </div>
           </>

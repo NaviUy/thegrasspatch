@@ -290,7 +290,9 @@ function RouteComponent() {
                               type="button"
                               variant="outline"
                               size="icon"
-                              onClick={() => changeQuantity(item.menuItemId, -1)}
+                              onClick={() =>
+                                changeQuantity(item.menuItemId, -1)
+                              }
                               disabled={item.quantity === 0}
                             >
                               -
@@ -302,7 +304,9 @@ function RouteComponent() {
                               type="button"
                               variant="default"
                               size="icon"
-                              onClick={() => changeQuantity(item.menuItemId, +1)}
+                              onClick={() =>
+                                changeQuantity(item.menuItemId, +1)
+                              }
                             >
                               +
                             </Button>
@@ -342,19 +346,22 @@ function RouteComponent() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="customerPhone">Phone number (optional)</Label>
+                    <Label htmlFor="customerPhone">
+                      Phone number (currently disabled)
+                    </Label>
                     <Input
                       id="customerPhone"
                       name="customerPhone"
                       placeholder="555-555-5555"
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
-                      disabled={submitting}
+                      disabled={true}
                     />
                     <p className="text-xs text-slate-500">
-                      By entering my phone number, I agree to receive recurring SMS messages
-                      from The Grass Patch about order updates. Msg & data rates may apply.
-                      Reply STOP to opt out, HELP for help.
+                      By entering my phone number, I agree to receive recurring
+                      SMS messages from The Grass Patch about order updates. Msg
+                      & data rates may apply. Reply STOP to opt out, HELP for
+                      help.
                     </p>
                   </div>
 

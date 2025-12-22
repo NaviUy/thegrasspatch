@@ -346,16 +346,13 @@ function RouteComponent() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="customerPhone">
-                      Phone number (currently disabled)
-                    </Label>
+                    <Label htmlFor="customerPhone">Phone number</Label>
                     <Input
                       id="customerPhone"
                       name="customerPhone"
                       placeholder="555-555-5555"
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
-                      disabled={true}
                     />
                     <p className="text-xs text-slate-500">
                       By entering my phone number, I agree to receive recurring

@@ -95,7 +95,7 @@ function App() {
         className="w-full mt-8 py-4 text-center text-sm text-gray-600 flex gap-2 flex-col items-center md:flex-row md:justify-center md:gap-4"
       >
         <Link to="/admin/login">Admin Dashboard</Link>
-        <p>Created by Ivan Yu</p>
+        <p>The Grass Patch is operated by Ivan Yu</p>
         <p>Email: naviuy576@gmail.com</p>
       </motion.footer>
     </>

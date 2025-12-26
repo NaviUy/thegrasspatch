@@ -92,10 +92,14 @@ function App() {
         initial={{ opacity: 0, y: 16 }}
         animate={footerVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
         transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="w-full mt-8 py-4 text-center text-sm text-gray-600 flex gap-2 flex-col items-center md:flex-row md:justify-center md:gap-4"
+        className="fixed bottom-0 w-full mt-8 py-4 text-center text-sm text-gray-600 flex gap-2 flex-col items-center md:flex-row md:justify-center md:gap-4"
       >
-        <Link to="/admin/login">Admin Dashboard</Link>
-        <p>The Grass Patch is operated by Ivan Yu</p>
+        <Link to="/admin/login" className="md:border-r-2 md:pr-4">
+          Admin Dashboard
+        </Link>
+        <p className="md:border-r-2 md:pr-4">
+          THE GRASS PATCH is operated by Ivan Yu
+        </p>
         <p>Email: naviuy576@gmail.com</p>
       </motion.footer>
     </>

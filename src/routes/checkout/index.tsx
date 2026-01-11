@@ -52,6 +52,7 @@ function RouteComponent() {
   const [removedItems, setRemovedItems] = useState<RemovedCartItem[]>([])
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
+  const [smsOptIn, setSmsOptIn] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   const changeQuantity = (menuItemId: string, delta: number) => {
@@ -116,6 +117,7 @@ function RouteComponent() {
   }, [refreshCart])
 
   const showEmptyState = !refreshing && totalItems === 0
+  const trimmedPhone = customerPhone.trim()
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -132,9 +134,15 @@ function RouteComponent() {
     }
 
     try {
+      if (trimmedPhone && !smsOptIn) {
+        setSubmitting(false)
+        setError('Please consent to SMS updates to use a phone number.')
+        return
+      }
+
       const response = await api.createPublicOrder({
         customerName: customerName.trim(),
-        customerPhone: customerPhone.trim() || null,
+        customerPhone: trimmedPhone || null,
         items: refreshResult.active.map((item) => ({
           menuItemId: item.menuItemId,
           quantity: item.quantity,
@@ -151,6 +159,7 @@ function RouteComponent() {
       setRemovedItems([])
       setCustomerName('')
       setCustomerPhone('')
+      setSmsOptIn(false)
 
       await router.navigate({
         to: '/order/$orderId',
@@ -346,7 +355,9 @@ function RouteComponent() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="customerPhone">Phone number</Label>
+                    <Label htmlFor="customerPhone">
+                      Phone number (optional)
+                    </Label>
                     <Input
                       id="customerPhone"
                       name="customerPhone"
@@ -354,19 +365,36 @@ function RouteComponent() {
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
                     />
-                    <p className="text-xs text-slate-500">
-                      By entering my phone number, I agree to receive recurring
-                      SMS messages from The Grass Patch about order updates. Msg
-                      & data rates may apply. Reply STOP to opt out, HELP for
-                      help.
-                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <input
+                      id="smsOptIn"
+                      name="smsOptIn"
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                      checked={smsOptIn}
+                      onChange={(e) => setSmsOptIn(e.target.checked)}
+                      required={Boolean(trimmedPhone)}
+                      disabled={submitting}
+                    />
+                    <Label
+                      htmlFor="smsOptIn"
+                      className="text-xs text-slate-500"
+                    >
+                      I agree to receive recurring SMS messages from The Grass
+                      Patch about order updates. Msg & data rates may apply.
+                      Reply STOP to opt out, HELP for help.
+                    </Label>
                   </div>
 
                   <div className="flex flex-col items-center justify-between gap-2">
                     <div className="text-sm text-slate-600">
-                      {customerPhone
-                        ? "We'll text you when your order is ready."
-                        : 'You can opt in to SMS updates by adding a phone number.'}
+                      {trimmedPhone && !smsOptIn
+                        ? 'Please check the box to opt in to SMS updates.'
+                        : trimmedPhone
+                          ? "We'll text you when your order is ready."
+                          : 'You can opt in to SMS updates by adding a phone number.'}
                     </div>
                     <Button
                       className="w-full"
@@ -375,7 +403,8 @@ function RouteComponent() {
                         submitting ||
                         refreshing ||
                         totalItems === 0 ||
-                        !customerName.trim()
+                        !customerName.trim() ||
+                        (trimmedPhone && !smsOptIn)
                       }
                     >
                       {submitting ? 'Placing order…' : 'Place order'}

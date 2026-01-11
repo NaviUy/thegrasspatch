@@ -54,6 +54,9 @@ function RouteComponent() {
   const [customerPhone, setCustomerPhone] = useState('')
   const [smsOptIn, setSmsOptIn] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const isDemoMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mode') === 'demo'
 
   const changeQuantity = (menuItemId: string, delta: number) => {
     setItems((prev) => {
@@ -115,6 +118,40 @@ function RouteComponent() {
   useEffect(() => {
     refreshCart(items)
   }, [refreshCart])
+
+  useEffect(() => {
+    if (!isDemoMode || items.length > 0) return
+    let cancelled = false
+
+    const loadDemoItem = async () => {
+      try {
+        const { items: menuItems } = await api.getPublicMenuItems()
+        const activeItems = (menuItems ?? []).filter(
+          (item) => item?.isActive !== false,
+        )
+        if (!activeItems.length) return
+        const randomItem =
+          activeItems[Math.floor(Math.random() * activeItems.length)]
+        if (cancelled) return
+        setItems([
+          {
+            menuItemId: randomItem.id,
+            name: randomItem.name,
+            priceCents: randomItem.priceCents,
+            imageUrl: randomItem.imageUrl ?? null,
+            quantity: 1,
+          },
+        ])
+      } catch (err) {
+        console.error(err)
+      }
+    }
+
+    loadDemoItem()
+    return () => {
+      cancelled = true
+    }
+  }, [isDemoMode, items.length, setItems])
 
   const showEmptyState = !refreshing && totalItems === 0
   const trimmedPhone = customerPhone.trim()
@@ -366,7 +403,6 @@ function RouteComponent() {
                       onChange={(e) => setCustomerPhone(e.target.value)}
                     />
                   </div>
-
                   <div className="flex items-start gap-2">
                     <input
                       id="smsOptIn"
@@ -378,16 +414,23 @@ function RouteComponent() {
                       required={Boolean(trimmedPhone)}
                       disabled={submitting}
                     />
-                    <Label
+                    <label
                       htmlFor="smsOptIn"
-                      className="text-xs text-slate-500"
+                      className="text-xs text-slate-500 leading-relaxed"
                     >
                       I agree to receive recurring SMS messages from The Grass
                       Patch about order updates. Msg & data rates may apply.
-                      Reply STOP to opt out, HELP for help.
-                    </Label>
+                      Reply STOP to opt out, HELP for help. See our{' '}
+                      <Link to="/privacy" className="underline text-xs">
+                        Privacy Policy
+                      </Link>{' '}
+                      and{' '}
+                      <Link to="/terms" className="underline text-xs">
+                        Terms of Service
+                      </Link>
+                      .
+                    </label>
                   </div>
-
                   <div className="flex flex-col items-center justify-between gap-2">
                     <div className="text-sm text-slate-600">
                       {trimmedPhone && !smsOptIn
@@ -404,7 +447,7 @@ function RouteComponent() {
                         refreshing ||
                         totalItems === 0 ||
                         !customerName.trim() ||
-                        (trimmedPhone && !smsOptIn)
+                        (Boolean(trimmedPhone) && !smsOptIn)
                       }
                     >
                       {submitting ? 'Placing order…' : 'Place order'}

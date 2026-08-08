@@ -7,6 +7,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
@@ -45,14 +46,24 @@ export const menuItems = pgTable('menu_items', {
 })
 
 /** SESSIONS (e.g. “Friday Night 7–10pm”) */
-export const sessions = pgTable('sessions', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  name: varchar('name', { length: 255 }).notNull(),
-  isActive: boolean('is_active').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-})
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: varchar('name', { length: 255 }).notNull(),
+    isActive: boolean('is_active').notNull().default(false),
+    nextOrderNumber: integer('next_order_number').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    nextOrderNumberPositive: check(
+      'sessions_next_order_number_positive',
+      sql`${table.nextOrderNumber} >= 1`,
+    ),
+  }),
+)
 
 /** Which menu items are available in a session (optional per-session pricing) */
 export const sessionMenuItems = pgTable(
@@ -80,39 +91,53 @@ export const sessionMenuItems = pgTable(
 )
 
 /** ORDERS (top-level order info) */
-export const orders = pgTable('orders', {
-  id: uuid('id').defaultRandom().primaryKey(),
+export const orders = pgTable(
+  'orders',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
 
-  sessionId: uuid('session_id')
-    .notNull()
-    .references(() => sessions.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
 
-  // 👇 new field
-  customerName: varchar('customer_name', { length: 255 }).notNull(),
+    orderNumber: integer('order_number').notNull(),
 
-  customerPhone: text('customer_phone'),
-  smsOptedInAt: timestamp('sms_opted_in_at', { withTimezone: true }),
-  smsConsentVersion: varchar('sms_consent_version', { length: 50 }),
+    // 👇 new field
+    customerName: varchar('customer_name', { length: 255 }).notNull(),
 
-  status: varchar('status', { length: 20 }).notNull().default('PENDING'),
+    customerPhone: text('customer_phone'),
+    smsOptedInAt: timestamp('sms_opted_in_at', { withTimezone: true }),
+    smsConsentVersion: varchar('sms_consent_version', { length: 50 }),
 
-  assignedWorkerId: uuid('assigned_worker_id').references(() => users.id, {
-    onDelete: 'set null',
+    status: varchar('status', { length: 20 }).notNull().default('PENDING'),
+
+    assignedWorkerId: uuid('assigned_worker_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
+
+    totalPriceCents: integer('total_price_cents').notNull().default(0),
+
+    trackingToken: uuid('tracking_token').notNull().defaultRandom(),
+
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
+  },
+  (table) => ({
+    sessionOrderNumberUnique: uniqueIndex(
+      'orders_session_order_number_unique',
+    ).on(table.sessionId, table.orderNumber),
+    orderNumberPositive: check(
+      'orders_order_number_positive',
+      sql`${table.orderNumber} >= 1`,
+    ),
   }),
-  assignedAt: timestamp('assigned_at', { withTimezone: true }),
-
-  totalPriceCents: integer('total_price_cents').notNull().default(0),
-
-  trackingToken: uuid('tracking_token').notNull().defaultRandom(),
-
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
-})
+)
 
 /** ORDER ITEMS (line items inside each order) */
 export const orderItems = pgTable('order_items', {

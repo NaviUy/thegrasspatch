@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '@/lib/apiClient'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabaseClient'
+import { formatOrderLabel } from '@/lib/orderNumber'
 
 type OrderItem = {
   id: string
@@ -14,6 +15,7 @@ type OrderItem = {
 
 type Order = {
   id: string
+  orderNumber?: number | null
   status: string
   customerName: string
   customerPhone?: string | null
@@ -230,7 +232,11 @@ function RouteComponent() {
               <p className="text-sm font-semibold text-slate-900">
                 Order confirmation
               </p>
-              <p className="text-xs text-slate-500">Order ID: {orderId}</p>
+              <p className="text-xs text-slate-500">
+                {order
+                  ? formatOrderLabel(order.orderNumber, order.id)
+                  : 'Loading order…'}
+              </p>
             </div>
           </div>
           <Button asChild variant="ghost" size="sm">
@@ -340,6 +346,12 @@ function RouteComponent() {
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">Order</span>
+                <span className="font-semibold text-slate-900">
+                  {formatOrderLabel(order.orderNumber, order.id)}
+                </span>
+              </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-600">Customer</span>
                 <span className="font-semibold text-slate-900">

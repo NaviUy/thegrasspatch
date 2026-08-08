@@ -6,6 +6,8 @@ import { AdminLayout } from '@/components/admin/AdminLayout'
 import { useAuthUser } from '@/hooks/useAuthUser'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabaseClient'
+import { Input } from '@/components/ui/input'
+import { formatOrderNumber, matchesOrderSearch } from '@/lib/orderNumber'
 
 type OrderItem = {
   id: string
@@ -18,6 +20,7 @@ type OrderItem = {
 type Order = {
   id: string
   sessionId: string
+  orderNumber?: number | null
   customerName: string
   status: 'PENDING' | 'MAKING' | 'READY'
   assignedWorkerId?: string | null
@@ -89,6 +92,7 @@ function OrderCard({
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-slate-900">
+            {formatOrderNumber(order.orderNumber, order.id)} ·{' '}
             {order.customerName}
           </p>
           <p className="text-xs text-slate-500">
@@ -171,6 +175,7 @@ function RouteComponent() {
   const [unassigning, setUnassigning] = useState<string | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [realtimeGeneration, setRealtimeGeneration] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
   const [selectedStatuses, setSelectedStatuses] = useState<
     Set<Exclude<StatusFilter, 'ALL'>>
   >(new Set(['PENDING', 'MAKING']))
@@ -223,26 +228,31 @@ function RouteComponent() {
     }
   }, [authLoading, fetchOrders, user])
 
+  const searchedOrders = useMemo(
+    () => orders.filter((order) => matchesOrderSearch(order, searchQuery)),
+    [orders, searchQuery],
+  )
+
   const myOrders = useMemo(
     () =>
-      orders.filter(
+      searchedOrders.filter(
         (o) => o.assignedWorkerId === user?.id && o.status !== 'READY',
       ),
-    [orders, user?.id],
+    [searchedOrders, user?.id],
   )
 
   const completedOrders = useMemo(
     () =>
-      orders.filter(
+      searchedOrders.filter(
         (o) => o.assignedWorkerId === user?.id && o.status === 'READY',
       ),
-    [orders, user?.id],
+    [searchedOrders, user?.id],
   )
 
   const filteredOrders = useMemo(() => {
-    if (selectedStatuses.size === 0) return orders
-    return orders.filter((o) => selectedStatuses.has(o.status))
-  }, [orders, selectedStatuses])
+    if (selectedStatuses.size === 0) return searchedOrders
+    return searchedOrders.filter((o) => selectedStatuses.has(o.status))
+  }, [searchedOrders, selectedStatuses])
 
   const toggleStatusFilter = (status: Exclude<StatusFilter, 'ALL'>) => {
     setSelectedStatuses((prev) => {
@@ -456,6 +466,15 @@ function RouteComponent() {
               </Button>
             ))}
           </div>
+          <div className="max-w-md">
+            <Input
+              type="search"
+              aria-label="Search orders"
+              placeholder="Search by order number or customer name"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -469,9 +488,11 @@ function RouteComponent() {
               </span>
             </div>
 
-            {orders.length === 0 ? (
+            {filteredOrders.length === 0 ? (
               <p className="text-sm text-slate-500">
-                No orders for the active session yet.
+                {orders.length === 0
+                  ? 'No orders for the active session yet.'
+                  : 'No orders match the current filters.'}
               </p>
             ) : (
               <div className="space-y-3">

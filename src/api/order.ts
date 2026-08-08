@@ -1,7 +1,8 @@
-import { db, schema } from '@/db/client'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { getActiveSession, refreshCartItems } from './menuItem'
 import jwt from 'jsonwebtoken'
+import { db, schema } from '@/db/client'
+import { getActiveSession, refreshCartItems } from './menuItem'
+import { sendOrderReadyNotification } from './sms'
 
 export type CreatePublicOrderInput = {
   customerName: string
@@ -284,6 +285,13 @@ export async function updateOrderStatus(input: {
 
   if (!updated) {
     throw new Error('Failed to update status.')
+  }
+
+  if (input.status === 'READY') {
+    const smsResult = await sendOrderReadyNotification(input.orderId)
+    if (smsResult.outcome === 'failed') {
+      console.error('Order-ready SMS failed:', smsResult.reason)
+    }
   }
 
   return getPublicOrder(input.orderId)

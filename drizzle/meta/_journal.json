@@ -71,6 +71,13 @@
       "when": 1786220639640,
       "tag": "20260808202359_add_sms_consent",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786223618667,
+      "tag": "20260808211338_add_telnyx_sms",
+      "breakpoints": true
     }
   ]
 }

@@ -21,6 +21,7 @@ import {
   createMenuItem,
   deleteMenuItem,
   listMenuItems,
+  reorderMenuItems,
   updateMenuItem,
 } from './api/menuItem'
 import { publicRouter } from './api/public'
@@ -32,7 +33,8 @@ import {
 } from './api/order'
 import { db, schema } from './db/client'
 import { supabaseService } from './lib/supabaseServiceClient'
-import { reorderMenuItems } from './api/menuItem'
+import { processTelnyxWebhook } from './api/telnyxWebhook'
+import { verifyTelnyxWebhook } from './lib/telnyx'
 
 const MENU_IMAGE_BUCKET = process.env.SUPABASE_MENU_BUCKET || 'menu-images'
 const upload = multer({
@@ -44,6 +46,44 @@ const app = express()
 const PORT = process.env.PORT ?? 4000
 
 app.use(cors())
+
+app.post(
+  '/api/webhooks/telnyx',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    if (!process.env.TELNYX_PUBLIC_KEY) {
+      return res.status(503).json({ error: 'Telnyx webhook is not configured.' })
+    }
+
+    if (!Buffer.isBuffer(req.body)) {
+      return res.status(400).json({ error: 'Raw webhook body is required.' })
+    }
+
+    const rawBody = req.body.toString('utf8')
+    const signature = req.get('telnyx-signature-ed25519') ?? ''
+    const timestamp = req.get('telnyx-timestamp') ?? ''
+
+    let event
+    try {
+      event = await verifyTelnyxWebhook(rawBody, {
+        'telnyx-signature-ed25519': signature,
+        'telnyx-timestamp': timestamp,
+      })
+    } catch (error) {
+      console.warn('Rejected Telnyx webhook:', error)
+      return res.status(403).json({ error: 'Invalid webhook signature.' })
+    }
+
+    try {
+      await processTelnyxWebhook(event)
+      return res.sendStatus(200)
+    } catch (error) {
+      console.error('Telnyx webhook processing error:', error)
+      return res.status(500).json({ error: 'Webhook processing failed.' })
+    }
+  },
+)
+
 app.use(express.json())
 app.use('/api/public', publicRouter)
 

@@ -1,7 +1,8 @@
-import { db, schema } from '@/db/client'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { getActiveSession, refreshCartItems } from './menuItem'
 import jwt from 'jsonwebtoken'
+import { getActiveSession, refreshCartItems } from './menuItem'
+import { lockSessionInventoryRows } from './inventory'
+import { db, schema } from '@/db/client'
 
 export type CreatePublicOrderInput = {
   customerName: string
@@ -12,6 +13,15 @@ export type CreatePublicOrderInput = {
 }
 
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET
+
+export class OrderAvailabilityError extends Error {
+  constructor(
+    public availability: Awaited<ReturnType<typeof refreshCartItems>>,
+  ) {
+    super('Inventory changed while the order was being submitted.')
+    this.name = 'OrderAvailabilityError'
+  }
+}
 
 function signTrackingToken(token: string) {
   if (!SUPABASE_JWT_SECRET) {
@@ -28,36 +38,60 @@ function signTrackingToken(token: string) {
 }
 
 export async function createPublicOrder(input: CreatePublicOrderInput) {
-  const session = await getActiveSession()
-
-  const { active, removed } = await refreshCartItems(input.items)
-
-  if (active.length === 0) {
-    return { order: null, removed }
-  }
-
-  const totalPriceCents = active.reduce(
-    (sum, item) => sum + item.priceCents * item.quantity,
-    0,
-  )
-
   const result = await db.transaction(async (trx) => {
-    const [order] = await trx
-      .insert(schema.orders)
-      .values({
-        sessionId: session.id,
-        customerName: input.customerName,
-        customerPhone: input.customerPhone,
-        smsOptedInAt: input.smsOptedInAt,
-        smsConsentVersion: input.smsConsentVersion,
-        totalPriceCents,
-      })
-      .returning()
+    const session = (
+      await trx
+        .select({ id: schema.sessions.id })
+        .from(schema.sessions)
+        .where(eq(schema.sessions.isActive, true))
+        .limit(1)
+        .for('share')
+    ).at(0)
+
+    if (!session) throw new Error('Active session not found.')
+
+    await lockSessionInventoryRows(
+      session.id,
+      input.items.map((item) => item.menuItemId),
+      trx,
+    )
+
+    const availability = await refreshCartItems(input.items, {
+      sessionId: session.id,
+      client: trx,
+    })
+
+    if (
+      availability.active.length === 0 ||
+      availability.removed.length > 0 ||
+      availability.adjusted.length > 0
+    ) {
+      throw new OrderAvailabilityError(availability)
+    }
+
+    const totalPriceCents = availability.active.reduce(
+      (sum, item) => sum + item.priceCents * item.quantity,
+      0,
+    )
+
+    const order = (
+      await trx
+        .insert(schema.orders)
+        .values({
+          sessionId: session.id,
+          customerName: input.customerName,
+          customerPhone: input.customerPhone,
+          smsOptedInAt: input.smsOptedInAt,
+          smsConsentVersion: input.smsConsentVersion,
+          totalPriceCents,
+        })
+        .returning()
+    ).at(0)
 
     if (!order) throw new Error('Failed to create order.')
 
     await trx.insert(schema.orderItems).values(
-      active.map((item) => ({
+      availability.active.map((item) => ({
         orderId: order.id,
         menuItemId: item.menuItemId,
         quantity: item.quantity,
@@ -65,15 +99,16 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
       })),
     )
 
-    return order
+    return { order, availability }
   })
 
-  const trackingJwt = signTrackingToken(result.trackingToken)
+  const trackingJwt = signTrackingToken(result.order.trackingToken)
 
   return {
-    order: result,
+    order: result.order,
     trackingJwt,
-    removed,
+    removed: result.availability.removed,
+    adjusted: result.availability.adjusted,
   }
 }
 
@@ -94,10 +129,7 @@ export async function getPublicOrder(orderId: string) {
       updatedAt: schema.orders.updatedAt,
     })
     .from(schema.orders)
-    .leftJoin(
-      schema.users,
-      eq(schema.users.id, schema.orders.assignedWorkerId),
-    )
+    .leftJoin(schema.users, eq(schema.users.id, schema.orders.assignedWorkerId))
     .where(eq(schema.orders.id, orderId))
     .limit(1)
 
@@ -145,10 +177,7 @@ export async function listActiveSessionOrders() {
       updatedAt: schema.orders.updatedAt,
     })
     .from(schema.orders)
-    .leftJoin(
-      schema.users,
-      eq(schema.users.id, schema.orders.assignedWorkerId),
-    )
+    .leftJoin(schema.users, eq(schema.users.id, schema.orders.assignedWorkerId))
     .where(eq(schema.orders.sessionId, session.id))
     .orderBy(schema.orders.createdAt)
 

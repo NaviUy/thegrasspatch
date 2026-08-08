@@ -8,9 +8,10 @@ export type CartItem = {
   priceCents: number
   quantity: number
   imageUrl?: string | null
+  availableQuantity?: number | null
 }
 
-function loadInitialCart(): CartItem[] {
+function loadInitialCart(): Array<CartItem> {
   if (typeof window === 'undefined') return []
   try {
     const raw = localStorage.getItem(CART_STORAGE_KEY)
@@ -24,7 +25,7 @@ function loadInitialCart(): CartItem[] {
 }
 
 export function useCart() {
-  const [items, setItems] = useState<CartItem[]>(() => loadInitialCart())
+  const [items, setItems] = useState<Array<CartItem>>(() => loadInitialCart())
 
   useEffect(() => {
     try {
@@ -41,9 +42,11 @@ export function useCart() {
     name: string
     priceCents: number
     imageUrl?: string | null
+    availableQuantity?: number | null
     delta: number
   }) => {
-    const { menuItemId, name, priceCents, imageUrl, delta } = input
+    const { menuItemId, name, priceCents, imageUrl, availableQuantity, delta } =
+      input
     setItems((prev) => {
       const existing = prev.find((c) => c.menuItemId === menuItemId)
       const nextQty = (existing?.quantity ?? 0) + delta
@@ -55,12 +58,21 @@ export function useCart() {
       if (!existing) {
         return [
           ...prev,
-          { menuItemId, name, priceCents, quantity: nextQty, imageUrl },
+          {
+            menuItemId,
+            name,
+            priceCents,
+            quantity: nextQty,
+            imageUrl,
+            availableQuantity,
+          },
         ]
       }
 
       return prev.map((c) =>
-        c.menuItemId === menuItemId ? { ...c, quantity: nextQty } : c,
+        c.menuItemId === menuItemId
+          ? { ...c, quantity: nextQty, availableQuantity }
+          : c,
       )
     })
   }

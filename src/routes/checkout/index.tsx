@@ -1,17 +1,27 @@
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import type { FormEvent } from 'react'
+import type { CartItem } from '@/hooks/useCart'
 import { Button } from '@/components/ui/button'
-import { useCart, CartItem } from '@/hooks/useCart'
+import { useCart } from '@/hooks/useCart'
 import { api } from '@/lib/apiClient'
 import { useActiveSession } from '@/hooks/useActiveSession'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { toast } from 'sonner'
 
 type RemovedCartItem = {
   menuItemId: string
   name?: string
-  reason: 'NOT_FOUND' | 'INACTIVE'
+  reason: 'NOT_FOUND' | 'INACTIVE' | 'SOLD_OUT'
+}
+
+type AdjustedCartItem = {
+  menuItemId: string
+  name: string
+  requestedQuantity: number
+  availableQuantity: number
+  reason: 'LIMITED_AVAILABILITY'
 }
 
 type RefreshCartResponse = {
@@ -21,8 +31,10 @@ type RefreshCartResponse = {
     priceCents: number
     imageUrl?: string | null
     quantity: number
+    remainingQuantity: number | null
   }>
-  removed: RemovedCartItem[]
+  removed: Array<RemovedCartItem>
+  adjusted: Array<AdjustedCartItem>
 }
 
 export const Route = createFileRoute('/checkout/')({
@@ -35,6 +47,7 @@ function formatDollars(cents: number) {
 
 function removalReasonCopy(reason: RemovedCartItem['reason']) {
   if (reason === 'INACTIVE') return 'No longer available'
+  if (reason === 'SOLD_OUT') return 'Sold out'
   return 'Removed from the menu'
 }
 
@@ -49,7 +62,10 @@ function RouteComponent() {
   const { items, setItems, totalItems, totalCents } = useCart()
   const [refreshing, setRefreshing] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [removedItems, setRemovedItems] = useState<RemovedCartItem[]>([])
+  const [removedItems, setRemovedItems] = useState<Array<RemovedCartItem>>([])
+  const [adjustedItems, setAdjustedItems] = useState<Array<AdjustedCartItem>>(
+    [],
+  )
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [smsOptIn, setSmsOptIn] = useState(false)
@@ -63,7 +79,16 @@ function RouteComponent() {
       const updated = prev
         .map((item) =>
           item.menuItemId === menuItemId
-            ? { ...item, quantity: Math.max(0, item.quantity + delta) }
+            ? {
+                ...item,
+                quantity: Math.max(
+                  0,
+                  item.availableQuantity === null ||
+                    item.availableQuantity === undefined
+                    ? item.quantity + delta
+                    : Math.min(item.quantity + delta, item.availableQuantity),
+                ),
+              }
             : item,
         )
         .filter((item) => item.quantity > 0)
@@ -73,14 +98,15 @@ function RouteComponent() {
   }
 
   const refreshCart = useCallback(
-    async (cartItems: CartItem[]) => {
+    async (cartItems: Array<CartItem>) => {
       setRefreshing(true)
       setError(null)
 
       try {
         if (cartItems.length === 0) {
           setRemovedItems([])
-          return { active: [], removed: [] }
+          setAdjustedItems([])
+          return { active: [], removed: [], adjusted: [] }
         }
 
         const payload = cartItems.map((item) => ({
@@ -89,7 +115,7 @@ function RouteComponent() {
           name: item.name,
         }))
 
-        const { active, removed } = (await api.refreshPublicCart(
+        const { active, removed, adjusted } = (await api.refreshPublicCart(
           payload,
         )) as RefreshCartResponse
 
@@ -100,10 +126,12 @@ function RouteComponent() {
             priceCents: item.priceCents,
             imageUrl: item.imageUrl ?? null,
             quantity: item.quantity,
+            availableQuantity: item.remainingQuantity,
           })),
         )
-        setRemovedItems(removed ?? [])
-        return { active, removed }
+        setRemovedItems(removed)
+        setAdjustedItems(adjusted)
+        return { active, removed, adjusted }
       } catch (err: any) {
         console.error(err)
         setError(err.message ?? 'Failed to refresh cart.')
@@ -126,8 +154,8 @@ function RouteComponent() {
     const loadDemoItem = async () => {
       try {
         const { items: menuItems } = await api.getPublicMenuItems()
-        const activeItems = (menuItems ?? []).filter(
-          (item) => item?.isActive !== false,
+        const activeItems = menuItems.filter(
+          (item) => item.isActive !== false && item.isSoldOut !== true,
         )
         if (!activeItems.length) return
         const randomItem =
@@ -140,6 +168,7 @@ function RouteComponent() {
             priceCents: randomItem.priceCents,
             imageUrl: randomItem.imageUrl ?? null,
             quantity: 1,
+            availableQuantity: randomItem.availableQuantity,
           },
         ])
       } catch (err) {
@@ -166,6 +195,14 @@ function RouteComponent() {
       setSubmitting(false)
       setError(
         'Some items are no longer available. Please update your cart and try again.',
+      )
+      return
+    }
+
+    if (refreshResult.removed.length > 0 || refreshResult.adjusted.length > 0) {
+      setSubmitting(false)
+      setError(
+        'Your cart was updated based on current availability. Please review it and submit again.',
       )
       return
     }
@@ -201,6 +238,7 @@ function RouteComponent() {
 
       setItems([])
       setRemovedItems([])
+      setAdjustedItems([])
       setCustomerName('')
       setCustomerPhone('')
       setSmsOptIn(false)
@@ -211,6 +249,21 @@ function RouteComponent() {
       })
     } catch (err: any) {
       console.error(err)
+      if (err.status === 409 && err.data) {
+        const availability = err.data as RefreshCartResponse
+        setItems(
+          availability.active.map((item) => ({
+            menuItemId: item.menuItemId,
+            name: item.name,
+            priceCents: item.priceCents,
+            imageUrl: item.imageUrl ?? null,
+            quantity: item.quantity,
+            availableQuantity: item.remainingQuantity,
+          })),
+        )
+        setRemovedItems(availability.removed)
+        setAdjustedItems(availability.adjusted)
+      }
       setError(err.message ?? 'Failed to place order.')
     } finally {
       setSubmitting(false)
@@ -304,6 +357,22 @@ function RouteComponent() {
               </div>
             )}
 
+            {adjustedItems.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-medium text-amber-900">
+                  We adjusted your cart to match current availability:
+                </p>
+                <ul className="mt-2 space-y-1 text-sm text-amber-800">
+                  {adjustedItems.map((item) => (
+                    <li key={item.menuItemId}>
+                      {item.name}: {item.requestedQuantity} requested,{' '}
+                      {item.availableQuantity} available
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {showEmptyState ? (
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-slate-600">
                 <p className="text-base font-medium text-slate-900">
@@ -359,6 +428,11 @@ function RouteComponent() {
                               size="icon"
                               onClick={() =>
                                 changeQuantity(item.menuItemId, +1)
+                              }
+                              disabled={
+                                item.availableQuantity !== null &&
+                                item.availableQuantity !== undefined &&
+                                item.quantity >= item.availableQuantity
                               }
                             >
                               +
@@ -455,7 +529,6 @@ function RouteComponent() {
                       type="submit"
                       disabled={
                         submitting ||
-                        refreshing ||
                         totalItems === 0 ||
                         !customerName.trim() ||
                         (Boolean(trimmedPhone) && !smsOptIn) ||

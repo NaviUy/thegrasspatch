@@ -1,14 +1,16 @@
 import {
+  boolean,
+  check,
+  integer,
+  jsonb,
   pgTable,
+  primaryKey,
+  text,
+  timestamp,
   uuid,
   varchar,
-  text,
-  boolean,
-  integer,
-  timestamp,
-  primaryKey,
-  jsonb,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 /** USERS: admins + workers */
 export const users = pgTable('users', {
@@ -64,9 +66,16 @@ export const sessionMenuItems = pgTable(
       .references(() => menuItems.id, { onDelete: 'cascade' }),
     // optional override price for this session
     priceCents: integer('price_cents'),
+    // null means this item has unlimited inventory for the session
+    inventoryLimit: integer('inventory_limit'),
+    isSoldOut: boolean('is_sold_out').notNull().default(false),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.sessionId, table.menuItemId] }),
+    inventoryLimitNonnegative: check(
+      'session_menu_items_inventory_limit_nonnegative',
+      sql`${table.inventoryLimit} is null or ${table.inventoryLimit} >= 0`,
+    ),
   }),
 )
 

@@ -71,6 +71,13 @@
       "when": 1786220639640,
       "tag": "20260808202359_add_sms_consent",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786225128588,
+      "tag": "0010_add_session_inventory",
+      "breakpoints": true
     }
   ]
 }

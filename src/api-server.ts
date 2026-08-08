@@ -33,6 +33,10 @@ import {
 import { db, schema } from './db/client'
 import { supabaseService } from './lib/supabaseServiceClient'
 import { reorderMenuItems } from './api/menuItem'
+import {
+  getActiveSessionInventory,
+  updateActiveSessionInventory,
+} from './api/inventory'
 
 const MENU_IMAGE_BUCKET = process.env.SUPABASE_MENU_BUCKET || 'menu-images'
 const upload = multer({
@@ -236,6 +240,74 @@ app.post('/api/sessions/:id/close', requireAuth, async (req, res) => {
   }
 })
 
+// Inventory for the active session. Workers may view; owners/admins may edit.
+app.get('/api/inventory/active', requireAuth, async (_req, res) => {
+  try {
+    const result = await getActiveSessionInventory({ includeInactive: true })
+    res.set('Cache-Control', 'no-store')
+    res.json(result)
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to load inventory.'
+    const status = message.includes('Active session not found') ? 400 : 500
+    res.status(status).json({ error: message })
+  }
+})
+
+app.patch(
+  '/api/inventory/active/:menuItemId',
+  requireAuth,
+  async (req, res) => {
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'OWNER') {
+      return res
+        .status(403)
+        .json({ error: 'Only owners and admins can update inventory.' })
+    }
+
+    const { menuItemId } = req.params
+    const hasInventoryLimit = Object.prototype.hasOwnProperty.call(
+      req.body ?? {},
+      'inventoryLimit',
+    )
+    const hasSoldOut = Object.prototype.hasOwnProperty.call(
+      req.body ?? {},
+      'isSoldOut',
+    )
+
+    if (!hasInventoryLimit && !hasSoldOut) {
+      return res.status(400).json({
+        error: 'Provide inventoryLimit or isSoldOut.',
+      })
+    }
+
+    const { inventoryLimit, isSoldOut } = req.body ?? {}
+    if (
+      hasInventoryLimit &&
+      inventoryLimit !== null &&
+      (!Number.isInteger(inventoryLimit) || inventoryLimit < 0)
+    ) {
+      return res.status(400).json({
+        error: 'Inventory must be a nonnegative whole number or null.',
+      })
+    }
+    if (hasSoldOut && typeof isSoldOut !== 'boolean') {
+      return res.status(400).json({ error: 'isSoldOut must be a boolean.' })
+    }
+
+    try {
+      const result = await updateActiveSessionInventory({
+        menuItemId,
+        ...(hasInventoryLimit ? { inventoryLimit } : {}),
+        ...(hasSoldOut ? { isSoldOut } : {}),
+      })
+      res.json(result)
+    } catch (error: any) {
+      const message = error?.message ?? 'Failed to update inventory.'
+      const status = message.includes('not found') ? 404 : 400
+      res.status(status).json({ error: message })
+    }
+  },
+)
+
 app.post('/api/invites', requireAuth, async (req, res) => {
   const { role } = req.body ?? {}
 
@@ -398,7 +470,9 @@ app.patch('/api/menu-items/:id', requireAuth, async (req, res) => {
 // reorder menu items (Admin only)
 app.post('/api/menu-items/reorder', requireAuth, async (req, res) => {
   if (req.user?.role !== 'ADMIN') {
-    return res.status(403).json({ error: 'Only admins can reorder menu items.' })
+    return res
+      .status(403)
+      .json({ error: 'Only admins can reorder menu items.' })
   }
   const { ids } = req.body ?? {}
   if (!Array.isArray(ids) || ids.some((id: any) => typeof id !== 'string')) {
@@ -481,9 +555,7 @@ app.patch('/api/orders/:id/status', requireAuth, async (req, res) => {
     console.error('Update order status error: ', error)
     const message = error?.message ?? 'Failed to update order.'
     const statusCode =
-      message.includes('not found') || message.includes('Invalid')
-        ? 400
-        : 400
+      message.includes('not found') || message.includes('Invalid') ? 400 : 400
     res.status(statusCode).json({ error: message })
   }
 })

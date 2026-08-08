@@ -1,5 +1,7 @@
-import { schema, db } from '@/db/client'
-import { asc, desc, eq, inArray } from 'drizzle-orm'
+import { asc, desc, eq } from 'drizzle-orm'
+import { ensureSessionInventoryRows, listSessionInventory } from './inventory'
+import { db, schema } from '@/db/client'
+import { getAvailableCartQuantity } from '@/lib/inventory'
 
 export type NewMenuItemInput = {
   name: string
@@ -31,6 +33,13 @@ export async function createMenuItem(input: NewMenuItemInput) {
       isActive: input.isActive ?? true,
     })
     .returning()
+
+  const sessions = await db
+    .select({ id: schema.sessions.id })
+    .from(schema.sessions)
+  for (const session of sessions) {
+    await ensureSessionInventoryRows(session.id)
+  }
   return item
 }
 
@@ -94,8 +103,8 @@ export async function getActiveSession() {
   return session
 }
 
-export async function reorderMenuItems(ids: string[]) {
-  const updates: any[] = []
+export async function reorderMenuItems(ids: Array<string>) {
+  const updates: Array<any> = []
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i]
     const position = i + 1
@@ -110,22 +119,21 @@ export async function reorderMenuItems(ids: string[]) {
 }
 
 export async function getActiveMenuItems() {
-  const items = await db
-    .select({
-      id: schema.menuItems.id,
-      name: schema.menuItems.name,
-      priceCents: schema.menuItems.priceCents,
-      imageUrl: schema.menuItems.imageUrl,
-      imagePlaceholderUrl: schema.menuItems.imagePlaceholderUrl,
-      badges: schema.menuItems.badges,
-      position: schema.menuItems.position,
-      isActive: schema.menuItems.isActive,
-    })
-    .from(schema.menuItems)
-    .where(eq(schema.menuItems.isActive, true))
-    .orderBy(asc(schema.menuItems.position), desc(schema.menuItems.createdAt))
-
-  return items
+  const session = await getActiveSession()
+  const items = await listSessionInventory(session.id)
+  return items.map((item) => ({
+    id: item.menuItemId,
+    name: item.name,
+    priceCents: item.priceCents,
+    imageUrl: item.imageUrl,
+    imagePlaceholderUrl: item.imagePlaceholderUrl,
+    badges: item.badges,
+    position: item.position,
+    isActive: item.isActive,
+    isSoldOut: item.isSoldOut,
+    isLimitedAvailability: item.isLimitedAvailability,
+    availableQuantity: item.remainingQuantity,
+  }))
 }
 
 type RefreshCartItemInput = {
@@ -135,53 +143,75 @@ type RefreshCartItemInput = {
 }
 
 export async function refreshCartItems(
-  items: RefreshCartItemInput[],
+  items: Array<RefreshCartItemInput>,
+  options: { sessionId?: string; client?: any } = {},
 ): Promise<{
   active: Array<{
     menuItemId: string
     name: string
     priceCents: number
     imageUrl: string | null
+    imagePlaceholderUrl: string | null
     quantity: number
+    remainingQuantity: number | null
   }>
   removed: Array<{
     menuItemId: string
     name?: string
-    reason: 'NOT_FOUND' | 'INACTIVE'
+    reason: 'NOT_FOUND' | 'INACTIVE' | 'SOLD_OUT'
+  }>
+  adjusted: Array<{
+    menuItemId: string
+    name: string
+    requestedQuantity: number
+    availableQuantity: number
+    reason: 'LIMITED_AVAILABILITY'
   }>
 }> {
   if (items.length === 0) {
-    return { active: [], removed: [] }
+    return { active: [], removed: [], adjusted: [] }
   }
 
-  const ids = items.map((i) => i.menuItemId)
-  const dbItems = await db
-    .select({
-      id: schema.menuItems.id,
-      name: schema.menuItems.name,
-      priceCents: schema.menuItems.priceCents,
-      imageUrl: schema.menuItems.imageUrl,
-      isActive: schema.menuItems.isActive,
+  const requestedItems = new Map<string, RefreshCartItemInput>()
+  for (const item of items) {
+    const existing = requestedItems.get(item.menuItemId)
+    requestedItems.set(item.menuItemId, {
+      ...item,
+      name: item.name ?? existing?.name,
+      quantity: (existing?.quantity ?? 0) + item.quantity,
     })
-    .from(schema.menuItems)
-    .where(inArray(schema.menuItems.id, ids))
+  }
 
-  const dbItemsMap = new Map(dbItems.map((item) => [item.id, item]))
+  const sessionId = options.sessionId ?? (await getActiveSession()).id
+  const inventory = await listSessionInventory(sessionId, {
+    includeInactive: true,
+    client: options.client,
+  })
+  const dbItemsMap = new Map(inventory.map((item) => [item.menuItemId, item]))
 
-  const active: {
+  const active: Array<{
     menuItemId: string
     name: string
     priceCents: number
     imageUrl: string | null
+    imagePlaceholderUrl: string | null
     quantity: number
-  }[] = []
-  const removed: {
+    remainingQuantity: number | null
+  }> = []
+  const removed: Array<{
     menuItemId: string
     name?: string
-    reason: 'NOT_FOUND' | 'INACTIVE'
-  }[] = []
+    reason: 'NOT_FOUND' | 'INACTIVE' | 'SOLD_OUT'
+  }> = []
+  const adjusted: Array<{
+    menuItemId: string
+    name: string
+    requestedQuantity: number
+    availableQuantity: number
+    reason: 'LIMITED_AVAILABILITY'
+  }> = []
 
-  for (const item of items) {
+  for (const item of requestedItems.values()) {
     const dbItem = dbItemsMap.get(item.menuItemId)
     if (!dbItem) {
       removed.push({
@@ -201,15 +231,37 @@ export async function refreshCartItems(
       continue
     }
 
+    if (dbItem.isSoldOut) {
+      removed.push({
+        menuItemId: item.menuItemId,
+        name: dbItem.name,
+        reason: 'SOLD_OUT',
+      })
+      continue
+    }
+
+    const quantity = getAvailableCartQuantity(item.quantity, dbItem)
+
+    if (quantity < item.quantity) {
+      adjusted.push({
+        menuItemId: dbItem.menuItemId,
+        name: dbItem.name,
+        requestedQuantity: item.quantity,
+        availableQuantity: quantity,
+        reason: 'LIMITED_AVAILABILITY',
+      })
+    }
+
     active.push({
-      menuItemId: dbItem.id,
+      menuItemId: dbItem.menuItemId,
       name: dbItem.name,
       priceCents: dbItem.priceCents,
       imageUrl: dbItem.imageUrl,
       imagePlaceholderUrl: dbItem.imagePlaceholderUrl,
-      quantity: item.quantity,
+      quantity,
+      remainingQuantity: dbItem.remainingQuantity,
     })
   }
 
-  return { active, removed }
+  return { active, removed, adjusted }
 }

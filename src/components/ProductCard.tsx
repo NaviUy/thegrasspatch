@@ -140,7 +140,7 @@ export function ProductCard({
 
       {/* Actions row */}
       {children && (
-        <div className="border-t border-slate-100 px-4 py-3 flex gap-2">
+        <div className="border-t border-slate-100 px-4 py-3 flex flex-wrap gap-2">
           {children}
         </div>
       )}

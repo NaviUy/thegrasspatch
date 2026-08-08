@@ -1,10 +1,10 @@
 import { Suspense } from 'react'
-import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
+import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import { api } from '@/lib/apiClient'
 import { Button } from '@/components/ui/button'
 import { ProductCard } from '@/components/ProductCard'
 import { useCart } from '@/hooks/useCart'
-import { toast } from 'sonner'
 
 export const Route = createFileRoute('/menu/')({
   loader: async () => {
@@ -46,24 +46,34 @@ type MenuItem = {
   imagePlaceholderUrl?: string | null
   badges?: Array<{ label: string; color: string }> | null
   isActive: boolean
+  isSoldOut: boolean
+  isLimitedAvailability: boolean
+  availableQuantity: number | null
 }
 
 function RouteComponent() {
   const router = useRouter()
-  const { open, session, items } = Route.useLoaderData() as {
-    open: boolean
-    session: { name: string } | null
-    items: MenuItem[]
-  }
+  const { open, session, items } = Route.useLoaderData()
   const { items: cart, updateQuantity, totalItems, totalCents } = useCart()
 
-  //cart helper
+  // cart helper
   const adjustQuantity = (item: MenuItem, delta: number) => {
+    const currentQuantity = getQuantity(item.id)
+    if (delta > 0 && item.isSoldOut) return
+    if (
+      delta > 0 &&
+      item.availableQuantity !== null &&
+      currentQuantity >= item.availableQuantity
+    ) {
+      toast.error('No more are currently available.')
+      return
+    }
     updateQuantity({
       menuItemId: item.id,
       name: item.name,
       priceCents: item.priceCents,
       imageUrl: item.imageUrl ?? null,
+      availableQuantity: item.availableQuantity,
       // cart currently ignores placeholder; keeping API unchanged
       delta,
     })
@@ -155,7 +165,16 @@ function RouteComponent() {
                   badges={item.badges ?? []}
                   className="w-full max-w-xs"
                 >
-                  <div className="ml-auto flex items-center gap-2">
+                  <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                    {item.isSoldOut ? (
+                      <span className="w-full text-right text-xs font-semibold text-red-700">
+                        Sold out
+                      </span>
+                    ) : item.isLimitedAvailability ? (
+                      <span className="w-full text-right text-xs font-semibold text-amber-700">
+                        Limited availability
+                      </span>
+                    ) : null}
                     <Button
                       type="button"
                       variant="outline"
@@ -171,6 +190,11 @@ function RouteComponent() {
                       variant="default"
                       size="icon"
                       onClick={() => adjustQuantity(item, +1)}
+                      disabled={
+                        item.isSoldOut ||
+                        (item.availableQuantity !== null &&
+                          qty >= item.availableQuantity)
+                      }
                     >
                       +
                     </Button>

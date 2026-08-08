@@ -1,5 +1,6 @@
+import { desc, eq } from 'drizzle-orm'
+import { ensureSessionInventoryRows } from './inventory'
 import { db, schema } from '@/db/client'
-import { eq, desc } from 'drizzle-orm'
 
 export async function listSessions() {
   return db
@@ -9,15 +10,18 @@ export async function listSessions() {
 }
 
 export async function createSession(name: string) {
-  const [session] = await db
-    .insert(schema.sessions)
-    .values({
-      name,
-      isActive: false,
-    })
-    .returning()
+  return db.transaction(async (trx) => {
+    const [session] = await trx
+      .insert(schema.sessions)
+      .values({
+        name,
+        isActive: false,
+      })
+      .returning()
 
-  return session
+    await ensureSessionInventoryRows(session.id, trx)
+    return session
+  })
 }
 
 export async function activateSession(id: string) {
@@ -33,6 +37,7 @@ export async function activateSession(id: string) {
     throw new Error('Session not found.')
   }
 
+  await ensureSessionInventoryRows(session.id)
   return session
 }
 

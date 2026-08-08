@@ -24,6 +24,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Reorder } from 'framer-motion'
+import { ItemInventoryDialog } from '@/components/admin/ItemInventoryDialog'
 
 export const Route = createFileRoute('/admin/menu/')({
   component: RouteComponent,
@@ -493,6 +494,8 @@ function RouteComponent() {
                       )
                     }
                   />
+
+                  <ItemInventoryDialog menuItemId={item.id} name={item.name} />
 
                   <Button
                     variant="outline"

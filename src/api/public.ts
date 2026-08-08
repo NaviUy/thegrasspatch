@@ -5,12 +5,16 @@ import {
   getActiveSession,
   refreshCartItems,
 } from './menuItem'
-import { createPublicOrder, getPublicOrder } from './order'
+import {
+  OrderAvailabilityError,
+  createPublicOrder,
+  getPublicOrder,
+} from './order'
 import { SmsConsentValidationError, prepareSmsConsent } from '@/lib/smsConsent'
 
 export const publicRouter = express.Router()
 
-//Get /api/public/active-session
+// Get /api/public/active-session
 publicRouter.get('/active-session', async (_req, res) => {
   try {
     const session = await getActiveSession()
@@ -21,12 +25,12 @@ publicRouter.get('/active-session', async (_req, res) => {
   }
 })
 
-//Get /api/public/menu-items
+// Get /api/public/menu-items
 publicRouter.get('/menu-items', async (_req, res) => {
   try {
     const session = await getActiveSession()
     const items = await getActiveMenuItems()
-    res.set('Cache-Control', 'public, max-age=60')
+    res.set('Cache-Control', 'no-store')
     return res.json({ session, items })
   } catch (error: any) {
     console.error(error)
@@ -60,7 +64,7 @@ publicRouter.post('/cart/refresh', async (req, res) => {
     ) as Array<{ menuItemId: string; quantity: number; name?: string }>
 
   if (normalized.length === 0) {
-    return res.json({ active: [], removed: [] })
+    return res.json({ active: [], removed: [], adjusted: [] })
   }
 
   try {
@@ -116,21 +120,21 @@ publicRouter.post('/orders', async (req, res) => {
   }
 
   try {
-    const { order, removed, trackingJwt } = await createPublicOrder({
+    const { order, removed, adjusted, trackingJwt } = await createPublicOrder({
       customerName: customerName.trim(),
       ...smsConsent,
       items: normalizedItems,
     })
 
-    if (!order) {
-      return res.status(400).json({
-        error: 'Some items are no longer available. Please refresh your cart.',
-        removed,
+    return res.status(201).json({ order, removed, adjusted, trackingJwt })
+  } catch (error: any) {
+    if (error instanceof OrderAvailabilityError) {
+      return res.status(409).json({
+        error:
+          'Availability changed while your order was submitted. Review your updated cart and try again.',
+        ...error.availability,
       })
     }
-
-    return res.status(201).json({ order, removed, trackingJwt })
-  } catch (error: any) {
     console.error('Create public order error: ', error)
     return res.status(500).json({ error: 'Failed to create order.' })
   }

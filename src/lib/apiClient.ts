@@ -31,12 +31,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     let message = `Request failed with ${res.status}`
+    let data: any = null
     try {
-      const data = await res.json()
-      if (data?.error) message = data.error
+      data = await res.json()
     } catch {}
+    if (data?.error) message = data.error
     const error: any = new Error(message)
     error.status = res.status
+    error.data = data
     throw error
   }
 
@@ -72,7 +74,7 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     }),
-  listSessions: () => request<{ sessions: any[] }>('/api/sessions'),
+  listSessions: () => request<{ sessions: Array<any> }>('/api/sessions'),
   createSession: (name: string) =>
     request<{ session: any }>('/api/sessions', {
       method: 'POST',
@@ -86,12 +88,25 @@ export const api = {
     request<{ session: any }>(`/api/sessions/${id}/close`, {
       method: 'POST',
     }),
+  getActiveInventory: () =>
+    request<{ session: any; items: Array<any> }>('/api/inventory/active'),
+  updateActiveInventory: (
+    menuItemId: string,
+    updates: { inventoryLimit?: number | null; isSoldOut?: boolean },
+  ) =>
+    request<{ sessionId: string; item: any }>(
+      `/api/inventory/active/${menuItemId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      },
+    ),
   createInvite: (role: string) =>
     request<{ invite: any }>('/api/invites', {
       method: 'POST',
       body: JSON.stringify({ role }),
     }),
-  listMenuItems: () => request<{ items: any[] }>('/api/menu-items'),
+  listMenuItems: () => request<{ items: Array<any> }>('/api/menu-items'),
   createMenuItem: (input: {
     name: string
     priceCents: number
@@ -127,9 +142,14 @@ export const api = {
     request<{ open: boolean; session: any | null }>(
       '/api/public/active-session',
     ),
-  getPublicMenuItems: () => request<{ items: any[] }>('/api/public/menu-items'),
-  refreshPublicCart: (items: any[]) =>
-    request<{ active: any[]; removed: any[] }>('/api/public/cart/refresh', {
+  getPublicMenuItems: () =>
+    request<{ items: Array<any> }>('/api/public/menu-items'),
+  refreshPublicCart: (items: Array<any>) =>
+    request<{
+      active: Array<any>
+      removed: Array<any>
+      adjusted: Array<any>
+    }>('/api/public/cart/refresh', {
       method: 'POST',
       body: JSON.stringify({ items }),
     }),
@@ -139,19 +159,21 @@ export const api = {
     smsOptIn: boolean
     items: Array<{ menuItemId: string; quantity: number; name?: string }>
   }) =>
-    request<{ order: any; removed: any[]; trackingJwt: string }>(
-      '/api/public/orders',
-      {
-        method: 'POST',
-        body: JSON.stringify(input),
-      },
-    ),
+    request<{
+      order: any
+      removed: Array<any>
+      adjusted: Array<any>
+      trackingJwt: string
+    }>('/api/public/orders', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   getPublicOrder: (id: string) =>
     request<{ order: any; trackingJwt: string }>(`/api/public/orders/${id}`),
   listActiveOrders: (status?: 'PENDING' | 'MAKING' | 'READY' | 'ALL') => {
     const query =
       status && status !== 'ALL' ? `?status=${encodeURIComponent(status)}` : ''
-    return request<{ orders: any[] }>(`/api/orders/active${query}`)
+    return request<{ orders: Array<any> }>(`/api/orders/active${query}`)
   },
   assignOrderToMe: (orderId: string) =>
     request<{ order: any }>(`/api/orders/${orderId}/assign`, {
@@ -167,8 +189,8 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
   health: () => request<{ ok: boolean }>('/api/health'),
-  reorderMenuItems: (ids: string[]) =>
-    request<{ items: any[] }>('/api/menu-items/reorder', {
+  reorderMenuItems: (ids: Array<string>) =>
+    request<{ items: Array<any> }>('/api/menu-items/reorder', {
       method: 'POST',
       body: JSON.stringify({ ids }),
     }),

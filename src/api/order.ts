@@ -5,7 +5,9 @@ import jwt from 'jsonwebtoken'
 
 export type CreatePublicOrderInput = {
   customerName: string
-  customerPhone?: string | null
+  customerPhone: string | null
+  smsOptedInAt: Date | null
+  smsConsentVersion: string | null
   items: Array<{ menuItemId: string; quantity: number; name?: string }>
 }
 
@@ -45,7 +47,9 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
       .values({
         sessionId: session.id,
         customerName: input.customerName,
-        customerPhone: input.customerPhone ?? null,
+        customerPhone: input.customerPhone,
+        smsOptedInAt: input.smsOptedInAt,
+        smsConsentVersion: input.smsConsentVersion,
         totalPriceCents,
       })
       .returning()

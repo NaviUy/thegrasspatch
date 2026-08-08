@@ -82,6 +82,8 @@ export const orders = pgTable('orders', {
   customerName: varchar('customer_name', { length: 255 }).notNull(),
 
   customerPhone: text('customer_phone'),
+  smsOptedInAt: timestamp('sms_opted_in_at', { withTimezone: true }),
+  smsConsentVersion: varchar('sms_consent_version', { length: 50 }),
 
   status: varchar('status', { length: 20 }).notNull().default('PENDING'),
 

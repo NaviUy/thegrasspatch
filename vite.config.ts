@@ -7,9 +7,16 @@ import tailwindcss from '@tailwindcss/vite'
 import { nitro } from 'nitro/vite'
 
 const config = defineConfig({
+  server: {
+    allowedHosts: ['c5bf-47-232-145-113.ngrok-free.app'],
+  },
   plugins: [
     devtools(),
-    nitro(),
+    nitro({
+      devProxy: {
+        '/api/**': 'http://localhost:4000',
+      },
+    }),
     // this is the plugin that enables path aliases
     viteTsConfigPaths({
       projects: ['./tsconfig.json'],

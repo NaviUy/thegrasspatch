@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 export function getAuthToken() {
   return localStorage.getItem('auth_token')
@@ -137,6 +136,7 @@ export const api = {
   createPublicOrder: (input: {
     customerName: string
     customerPhone?: string | null
+    smsOptIn: boolean
     items: Array<{ menuItemId: string; quantity: number; name?: string }>
   }) =>
     request<{ order: any; removed: any[]; trackingJwt: string }>(

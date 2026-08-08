@@ -1,11 +1,12 @@
 import express from 'express'
 
 import {
-  getActiveSession,
   getActiveMenuItems,
+  getActiveSession,
   refreshCartItems,
 } from './menuItem'
 import { createPublicOrder, getPublicOrder } from './order'
+import { SmsConsentValidationError, prepareSmsConsent } from '@/lib/smsConsent'
 
 export const publicRouter = express.Router()
 
@@ -73,7 +74,7 @@ publicRouter.post('/cart/refresh', async (req, res) => {
 
 // POST /api/public/orders
 publicRouter.post('/orders', async (req, res) => {
-  const { customerName, customerPhone, items } = req.body ?? {}
+  const { customerName, customerPhone, smsOptIn, items } = req.body ?? {}
 
   if (!customerName || typeof customerName !== 'string') {
     return res.status(400).json({ error: 'Customer name is required.' })
@@ -81,6 +82,16 @@ publicRouter.post('/orders', async (req, res) => {
 
   if (!Array.isArray(items)) {
     return res.status(400).json({ error: 'Items must be an array.' })
+  }
+
+  let smsConsent
+  try {
+    smsConsent = prepareSmsConsent({ customerPhone, smsOptIn })
+  } catch (error) {
+    if (error instanceof SmsConsentValidationError) {
+      return res.status(400).json({ error: error.message })
+    }
+    throw error
   }
 
   const normalizedItems = items
@@ -107,10 +118,7 @@ publicRouter.post('/orders', async (req, res) => {
   try {
     const { order, removed, trackingJwt } = await createPublicOrder({
       customerName: customerName.trim(),
-      customerPhone:
-        customerPhone && typeof customerPhone === 'string'
-          ? customerPhone.trim()
-          : null,
+      ...smsConsent,
       items: normalizedItems,
     })
 

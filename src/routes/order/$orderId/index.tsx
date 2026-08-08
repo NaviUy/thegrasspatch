@@ -20,7 +20,7 @@ type Order = {
   totalPriceCents: number
   createdAt?: string
   trackingJwt?: string
-  items: OrderItem[]
+  items: Array<OrderItem>
 }
 
 const TRACKING_STEPS: Array<{
@@ -60,7 +60,7 @@ function RouteComponent() {
   const [loading, setLoading] = useState(true)
 
   const [error, setError] = useState<string | null>(null)
-  const [isConnected, setIsConnected] = useState(false)
+  const [realtimeGeneration, setRealtimeGeneration] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -70,10 +70,11 @@ function RouteComponent() {
 
     async function load() {
       try {
-        const { order, trackingJwt } = await api.getPublicOrder(orderId)
+        const { order: loadedOrder, trackingJwt: loadedTrackingJwt } =
+          await api.getPublicOrder(orderId)
         if (cancelled) return
-        setOrder(order as Order)
-        setTrackingJwt(trackingJwt ?? null)
+        setOrder(loadedOrder as Order)
+        setTrackingJwt(loadedTrackingJwt)
       } catch (err: any) {
         console.error(err)
         if (!cancelled) {
@@ -108,10 +109,11 @@ function RouteComponent() {
         },
         async () => {
           try {
-            const { order, trackingJwt } = await api.getPublicOrder(orderId)
+            const { order: refreshedOrder, trackingJwt: refreshedTrackingJwt } =
+              await api.getPublicOrder(orderId)
             if (!cancelled) {
-              setOrder(order as Order)
-              setTrackingJwt(trackingJwt ?? null)
+              setOrder(refreshedOrder as Order)
+              setTrackingJwt((current) => current ?? refreshedTrackingJwt)
             }
           } catch (err: any) {
             console.error(err)
@@ -122,11 +124,12 @@ function RouteComponent() {
         },
       )
 
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setIsConnected(true)
-        } else {
-          setIsConnected(false)
+      .subscribe((status, subscriptionError) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error(
+            'Order tracking Realtime subscription error:',
+            subscriptionError,
+          )
         }
       })
 
@@ -134,22 +137,60 @@ function RouteComponent() {
       cancelled = true
       supabase?.removeChannel(channel)
     }
-  }, [orderId, trackingJwt])
+  }, [orderId, realtimeGeneration, trackingJwt])
 
-  // Polling fallback: refresh every 10 seconds ONLY if not connected
+  // Mobile browsers can silently suspend WebSockets in the background. Refresh
+  // periodically while visible and immediately when the page resumes.
   useEffect(() => {
-    if (!orderId || isConnected) return
-    const interval = setInterval(() => {
+    if (!orderId) return
+    let cancelled = false
+    let refreshInFlight = false
+
+    const refresh = () => {
+      if (cancelled || refreshInFlight) return
+      refreshInFlight = true
       api
         .getPublicOrder(orderId)
-        .then(({ order, trackingJwt }) => {
-          setOrder(order as Order)
-          if (trackingJwt) setTrackingJwt(trackingJwt)
-        })
+        .then(
+          ({ order: refreshedOrder, trackingJwt: refreshedTrackingJwt }) => {
+            if (cancelled) return
+            setOrder(refreshedOrder as Order)
+            setTrackingJwt((current) => current ?? refreshedTrackingJwt)
+          },
+        )
         .catch((err) => console.error('Polling error:', err))
+        .finally(() => {
+          refreshInFlight = false
+        })
+    }
+
+    const reconnectAndRefresh = () => {
+      if (document.visibilityState !== 'visible') return
+      supabase?.realtime.connect()
+      setRealtimeGeneration((generation) => generation + 1)
+      void refresh()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') reconnectAndRefresh()
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh()
     }, 10000)
-    return () => clearInterval(interval)
-  }, [orderId, isConnected])
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('online', reconnectAndRefresh)
+    window.addEventListener('pageshow', reconnectAndRefresh)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('online', reconnectAndRefresh)
+      window.removeEventListener('pageshow', reconnectAndRefresh)
+    }
+  }, [orderId])
 
   const trackerIndex = useMemo(() => {
     const key = (order?.status ?? 'PENDING').toUpperCase()

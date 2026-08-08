@@ -1,11 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Reorder } from 'framer-motion'
 import { api } from '@/lib/apiClient'
 import { AdminLayout } from '@/components/admin/AdminLayout'
 import { useAuthUser } from '@/hooks/useAuthUser'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabaseClient'
-import { Reorder } from 'framer-motion'
 
 type OrderItem = {
   id: string
@@ -24,7 +24,7 @@ type Order = {
   assignedWorkerName?: string | null
   totalPriceCents: number
   createdAt?: string
-  items: OrderItem[]
+  items: Array<OrderItem>
 }
 
 const STATUS_OPTIONS: Array<{
@@ -163,13 +163,14 @@ function OrderCard({
 
 function RouteComponent() {
   const { user, loading: authLoading, error: authError } = useAuthUser()
-  const [orders, setOrders] = useState<Order[]>([])
+  const [orders, setOrders] = useState<Array<Order>>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [assigning, setAssigning] = useState<string | null>(null)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
   const [unassigning, setUnassigning] = useState<string | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [realtimeGeneration, setRealtimeGeneration] = useState(0)
   const [selectedStatuses, setSelectedStatuses] = useState<
     Set<Exclude<StatusFilter, 'ALL'>>
   >(new Set(['PENDING', 'MAKING']))
@@ -196,10 +197,10 @@ function RouteComponent() {
       setError(null)
 
       try {
-        const { orders } = await api.listActiveOrders('ALL')
+        const { orders: fetchedOrders } = await api.listActiveOrders('ALL')
         if (isCancelled?.()) return
-        setOrders(orders as Order[])
-        setActiveSessionId(orders[0]?.sessionId ?? null)
+        setOrders(fetchedOrders as Array<Order>)
+        setActiveSessionId(fetchedOrders[0]?.sessionId ?? null)
       } catch (err: any) {
         console.error(err)
         if (!isCancelled?.()) {
@@ -307,7 +308,7 @@ function RouteComponent() {
     event.preventDefault()
   }
 
-  const handleReorderMyOrders = (reordered: Order[]) => {
+  const handleReorderMyOrders = (reordered: Array<Order>) => {
     setOrders((prev) => {
       const reorderedIds = new Set(reordered.map((o) => o.id))
       const remaining = prev.filter((o) => !reorderedIds.has(o.id))
@@ -340,23 +341,77 @@ function RouteComponent() {
           })
         },
       )
-      .subscribe((status) => {
+      .subscribe((status, subscriptionError) => {
         console.log('Supabase Realtime status:', status)
         if (status === 'SUBSCRIBED') {
           console.log('Successfully subscribed to orders channel')
         }
-        if (status === 'CHANNEL_ERROR') {
-          console.error('Supabase Realtime channel error. Check RLS policies or JWT.')
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error(
+            'Supabase Realtime subscription error:',
+            subscriptionError,
+          )
         }
       })
 
-    console.log('Initializing Supabase Realtime with token:', user.supabaseJwt ? 'PRESENT' : 'MISSING')
+    console.log(
+      'Initializing Supabase Realtime with token:',
+      user.supabaseJwt ? 'PRESENT' : 'MISSING',
+    )
 
     return () => {
       cancelled = true
       supabase?.removeChannel(channel)
     }
-  }, [activeSessionId, fetchOrders, user])
+  }, [activeSessionId, fetchOrders, realtimeGeneration, user])
+
+  // Mobile browsers can silently suspend WebSockets in the background. Refresh
+  // immediately on resume and periodically while visible as a safety net.
+  useEffect(() => {
+    if (authLoading || !user) return
+    let cancelled = false
+    let refreshInFlight = false
+
+    const refresh = async () => {
+      if (cancelled || refreshInFlight) return
+      refreshInFlight = true
+      try {
+        await fetchOrders({
+          showLoader: false,
+          isCancelled: () => cancelled,
+        })
+      } finally {
+        refreshInFlight = false
+      }
+    }
+
+    const reconnectAndRefresh = () => {
+      if (document.visibilityState !== 'visible') return
+      supabase?.realtime.connect()
+      setRealtimeGeneration((generation) => generation + 1)
+      void refresh()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') reconnectAndRefresh()
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh()
+    }, 15000)
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('online', reconnectAndRefresh)
+    window.addEventListener('pageshow', reconnectAndRefresh)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('online', reconnectAndRefresh)
+      window.removeEventListener('pageshow', reconnectAndRefresh)
+    }
+  }, [authLoading, fetchOrders, user])
 
   if (authLoading || loading) {
     return (
@@ -465,7 +520,10 @@ function RouteComponent() {
                     value={order}
                     as="div"
                     className="cursor-grab active:cursor-grabbing"
-                    whileDrag={{ scale: 1.01, boxShadow: '0 8px 24px rgba(15,23,42,0.14)' }}
+                    whileDrag={{
+                      scale: 1.01,
+                      boxShadow: '0 8px 24px rgba(15,23,42,0.14)',
+                    }}
                   >
                     <OrderCard
                       order={order}

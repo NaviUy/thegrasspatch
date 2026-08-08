@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import jwt from 'jsonwebtoken'
 import { getActiveSession, refreshCartItems } from './menuItem'
 import { lockSessionInventoryRows } from './inventory'
@@ -45,7 +45,6 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
         .from(schema.sessions)
         .where(eq(schema.sessions.isActive, true))
         .limit(1)
-        .for('share')
     ).at(0)
 
     if (!session) throw new Error('Active session not found.')
@@ -74,11 +73,33 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
       0,
     )
 
+    const numberState = (
+      await trx
+        .update(schema.sessions)
+        .set({
+          nextOrderNumber: sql`${schema.sessions.nextOrderNumber} + 1`,
+        })
+        .where(
+          and(
+            eq(schema.sessions.id, session.id),
+            eq(schema.sessions.isActive, true),
+          ),
+        )
+        .returning({ nextOrderNumber: schema.sessions.nextOrderNumber })
+    ).at(0)
+
+    if (!numberState) {
+      throw new Error('The ordering session is no longer active.')
+    }
+
+    const orderNumber = Number(numberState.nextOrderNumber) - 1
+
     const order = (
       await trx
         .insert(schema.orders)
         .values({
           sessionId: session.id,
+          orderNumber,
           customerName: input.customerName,
           customerPhone: input.customerPhone,
           smsOptedInAt: input.smsOptedInAt,
@@ -117,6 +138,7 @@ export async function getPublicOrder(orderId: string) {
     .select({
       id: schema.orders.id,
       sessionId: schema.orders.sessionId,
+      orderNumber: schema.orders.orderNumber,
       customerName: schema.orders.customerName,
       customerPhone: schema.orders.customerPhone,
       status: schema.orders.status,
@@ -166,6 +188,7 @@ export async function listActiveSessionOrders() {
     .select({
       id: schema.orders.id,
       sessionId: schema.orders.sessionId,
+      orderNumber: schema.orders.orderNumber,
       customerName: schema.orders.customerName,
       customerPhone: schema.orders.customerPhone,
       status: schema.orders.status,

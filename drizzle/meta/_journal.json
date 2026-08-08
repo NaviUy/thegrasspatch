@@ -78,6 +78,13 @@
       "when": 1786225128588,
       "tag": "0010_add_session_inventory",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786226645239,
+      "tag": "20260808220748_add_short_order_numbers",
+      "breakpoints": true
     }
   ]
 }

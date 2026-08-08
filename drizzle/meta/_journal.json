@@ -64,6 +64,13 @@
       "when": 1765089039553,
       "tag": "0008_slow_karma",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786220639640,
+      "tag": "20260808202359_add_sms_consent",
+      "breakpoints": true
     }
   ]
 }

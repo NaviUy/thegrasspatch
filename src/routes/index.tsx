@@ -92,15 +92,28 @@ function App() {
         initial={{ opacity: 0, y: 16 }}
         animate={footerVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
         transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="fixed bottom-0 w-full mt-8 py-4 text-center text-sm text-gray-600 flex gap-2 flex-col items-center md:flex-row md:justify-center md:gap-4"
+        className="fixed bottom-0 w-full mt-8 px-4 py-4 text-center text-sm text-gray-600 flex gap-2 flex-col items-center"
       >
-        <Link to="/admin/login" className="md:border-r-2 md:pr-4">
-          Admin Dashboard
-        </Link>
-        <p className="md:border-r-2 md:pr-4">
-          THE GRASS PATCH is operated by Ivan Yu
-        </p>
-        <p>Email: naviuy576@gmail.com</p>
+        <nav
+          aria-label="Business and legal information"
+          className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1"
+        >
+          <Link to="/about" className="underline-offset-4 hover:underline">
+            About & Contact
+          </Link>
+          <Link to="/privacy" className="underline-offset-4 hover:underline">
+            Privacy Policy
+          </Link>
+          <Link to="/terms" className="underline-offset-4 hover:underline">
+            SMS Terms
+          </Link>
+          <Link
+            to="/admin/login"
+            className="underline-offset-4 hover:underline"
+          >
+            Admin Dashboard
+          </Link>
+        </nav>
       </motion.footer>
     </>
   )

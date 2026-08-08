@@ -1,6 +1,6 @@
 {
-  "id": "5ca621b4-34b8-4653-89db-870b0041acfc",
-  "prevId": "f6c91b77-bbf0-4cd0-a32f-5738e4c2b5ad",
+  "id": "b082a47a-af4c-4c89-bc6c-eb2451fb1c80",
+  "prevId": "65b87a92-ae3e-4b9a-9b54-bb0a6b2612a8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -128,6 +128,18 @@
         "image_placeholder_url": {
           "name": "image_placeholder_url",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "badges": {
+          "name": "badges",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -267,6 +279,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "sms_opted_in_at": {
+          "name": "sms_opted_in_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sms_consent_version": {
+          "name": "sms_consent_version",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "varchar(20)",
@@ -292,6 +316,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "tracking_token": {
+          "name": "tracking_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
         "created_at": {
           "name": "created_at",

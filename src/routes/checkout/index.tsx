@@ -177,9 +177,16 @@ function RouteComponent() {
         return
       }
 
+      if (smsOptIn && !trimmedPhone) {
+        setSubmitting(false)
+        setError('Please enter a phone number to receive SMS updates.')
+        return
+      }
+
       const response = await api.createPublicOrder({
         customerName: customerName.trim(),
         customerPhone: trimmedPhone || null,
+        smsOptIn,
         items: refreshResult.active.map((item) => ({
           menuItemId: item.menuItemId,
           quantity: item.quantity,
@@ -418,15 +425,17 @@ function RouteComponent() {
                       htmlFor="smsOptIn"
                       className="text-xs text-slate-500 leading-relaxed"
                     >
-                      I agree to receive recurring SMS messages from The Grass
-                      Patch about order updates. Msg & data rates may apply.
-                      Reply STOP to opt out, HELP for help. See our{' '}
+                      By checking this box, I agree to receive transactional
+                      text messages from The Grass Patch about my order. Message
+                      frequency varies, typically one message per order. Msg &
+                      data rates may apply. Reply STOP to opt out, HELP for
+                      help. Consent is not a condition of purchase. View our{' '}
                       <Link to="/privacy" className="underline text-xs">
                         Privacy Policy
                       </Link>{' '}
                       and{' '}
                       <Link to="/terms" className="underline text-xs">
-                        Terms of Service
+                        SMS Terms
                       </Link>
                       .
                     </label>
@@ -435,9 +444,11 @@ function RouteComponent() {
                     <div className="text-sm text-slate-600">
                       {trimmedPhone && !smsOptIn
                         ? 'Please check the box to opt in to SMS updates.'
-                        : trimmedPhone
-                          ? "We'll text you when your order is ready."
-                          : 'You can opt in to SMS updates by adding a phone number.'}
+                        : smsOptIn && !trimmedPhone
+                          ? 'Please add a phone number for SMS updates.'
+                          : trimmedPhone
+                            ? "We'll text you when your order is ready."
+                            : 'You can opt in to SMS updates by adding a phone number.'}
                     </div>
                     <Button
                       className="w-full"
@@ -447,7 +458,8 @@ function RouteComponent() {
                         refreshing ||
                         totalItems === 0 ||
                         !customerName.trim() ||
-                        (Boolean(trimmedPhone) && !smsOptIn)
+                        (Boolean(trimmedPhone) && !smsOptIn) ||
+                        (smsOptIn && !trimmedPhone)
                       }
                     >
                       {submitting ? 'Placing order…' : 'Place order'}

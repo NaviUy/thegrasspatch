@@ -48,6 +48,10 @@ publicRouter.post('/cart/refresh', async (req, res) => {
 
   const normalized = items
     .map((item: any) => ({
+      cartLineId:
+        item && typeof item.cartLineId === 'string'
+          ? item.cartLineId
+          : item?.menuItemId,
       menuItemId:
         item && typeof item.menuItemId === 'string' ? item.menuItemId : null,
       quantity:
@@ -55,13 +59,29 @@ publicRouter.post('/cart/refresh', async (req, res) => {
           ? Math.floor(item.quantity)
           : Number.NaN,
       name: item && typeof item.name === 'string' ? item.name : undefined,
+      selectedOptionChoiceIds: Array.isArray(item?.selectedOptionChoiceIds)
+        ? item.selectedOptionChoiceIds.filter(
+            (id: any) => typeof id === 'string',
+          )
+        : [],
+      specialInstructions:
+        typeof item?.specialInstructions === 'string'
+          ? item.specialInstructions.slice(0, 200)
+          : '',
     }))
     .filter(
       (item) =>
         !!item.menuItemId &&
         Number.isFinite(item.quantity) &&
         item.quantity > 0,
-    ) as Array<{ menuItemId: string; quantity: number; name?: string }>
+    ) as Array<{
+    cartLineId: string
+    menuItemId: string
+    quantity: number
+    name?: string
+    selectedOptionChoiceIds: Array<string>
+    specialInstructions: string
+  }>
 
   if (normalized.length === 0) {
     return res.json({ active: [], removed: [], adjusted: [] })
@@ -100,6 +120,10 @@ publicRouter.post('/orders', async (req, res) => {
 
   const normalizedItems = items
     .map((item: any) => ({
+      cartLineId:
+        item && typeof item.cartLineId === 'string'
+          ? item.cartLineId
+          : item?.menuItemId,
       menuItemId:
         item && typeof item.menuItemId === 'string' ? item.menuItemId : null,
       quantity:
@@ -107,13 +131,29 @@ publicRouter.post('/orders', async (req, res) => {
           ? Math.floor(item.quantity)
           : Number.NaN,
       name: item && typeof item.name === 'string' ? item.name : undefined,
+      selectedOptionChoiceIds: Array.isArray(item?.selectedOptionChoiceIds)
+        ? item.selectedOptionChoiceIds.filter(
+            (id: any) => typeof id === 'string',
+          )
+        : [],
+      specialInstructions:
+        typeof item?.specialInstructions === 'string'
+          ? item.specialInstructions.slice(0, 200)
+          : '',
     }))
     .filter(
       (item) =>
         !!item.menuItemId &&
         Number.isFinite(item.quantity) &&
         item.quantity > 0,
-    ) as Array<{ menuItemId: string; quantity: number; name?: string }>
+    ) as Array<{
+    cartLineId: string
+    menuItemId: string
+    quantity: number
+    name?: string
+    selectedOptionChoiceIds: Array<string>
+    specialInstructions: string
+  }>
 
   if (normalizedItems.length === 0) {
     return res.status(400).json({ error: 'Cart items are required.' })

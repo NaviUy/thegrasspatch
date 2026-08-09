@@ -1,27 +1,51 @@
 import { useEffect, useState } from 'react'
 
-const CART_STORAGE_KEY = 'tgp_cart_v1'
+const CART_STORAGE_KEY = 'tgp_cart_v2'
+
+export type CartOption = {
+  optionGroupId: string
+  optionChoiceId: string
+  groupName: string
+  choiceName: string
+  priceAdjustmentCents: number
+}
 
 export type CartItem = {
+  cartLineId: string
+  configurationKey: string
   menuItemId: string
   name: string
+  basePriceCents: number
   priceCents: number
   quantity: number
   imageUrl?: string | null
   availableQuantity?: number | null
+  selectedOptions: Array<CartOption>
+  specialInstructions: string
 }
 
 function loadInitialCart(): Array<CartItem> {
   if (typeof window === 'undefined') return []
   try {
-    const raw = localStorage.getItem(CART_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed
+    const parsed = JSON.parse(localStorage.getItem(CART_STORAGE_KEY) ?? '[]')
+    return Array.isArray(parsed) ? parsed : []
   } catch {
     return []
   }
+}
+
+export function makeCartConfigurationKey(input: {
+  menuItemId: string
+  selectedOptions: Array<CartOption>
+  specialInstructions: string
+}) {
+  return JSON.stringify({
+    menuItemId: input.menuItemId,
+    choiceIds: input.selectedOptions
+      .map((option) => option.optionChoiceId)
+      .sort(),
+    specialInstructions: input.specialInstructions.trim(),
+  })
 }
 
 export function useCart() {
@@ -30,70 +54,49 @@ export function useCart() {
   useEffect(() => {
     try {
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [items])
 
   const clear = () => setItems([])
 
-  const updateQuantity = (input: {
-    menuItemId: string
-    name: string
-    priceCents: number
-    imageUrl?: string | null
-    availableQuantity?: number | null
-    delta: number
-  }) => {
-    const { menuItemId, name, priceCents, imageUrl, availableQuantity, delta } =
-      input
-    setItems((prev) => {
-      const existing = prev.find((c) => c.menuItemId === menuItemId)
-      const nextQty = (existing?.quantity ?? 0) + delta
-
-      if (nextQty <= 0) {
-        return prev.filter((c) => c.menuItemId !== menuItemId)
+  const addConfiguredItem = (
+    input: Omit<CartItem, 'cartLineId' | 'configurationKey' | 'quantity'>,
+  ) => {
+    const key = makeCartConfigurationKey(input)
+    setItems((current) => {
+      const existing = current.find((item) => item.configurationKey === key)
+      if (existing) {
+        return current.map((item) =>
+          item.cartLineId === existing.cartLineId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
+        )
       }
-
-      if (!existing) {
-        return [
-          ...prev,
-          {
-            menuItemId,
-            name,
-            priceCents,
-            quantity: nextQty,
-            imageUrl,
-            availableQuantity,
-          },
-        ]
-      }
-
-      return prev.map((c) =>
-        c.menuItemId === menuItemId
-          ? { ...c, quantity: nextQty, availableQuantity }
-          : c,
-      )
+      return [
+        ...current,
+        {
+          ...input,
+          cartLineId: crypto.randomUUID(),
+          configurationKey: key,
+          quantity: 1,
+        },
+      ]
     })
   }
 
-  const setQuantity = (menuItemId: string, quantity: number) => {
-    if (quantity <= 0) {
-      setItems((prev) => prev.filter((c) => c.menuItemId !== menuItemId))
-      return
-    }
-    setItems((prev) => {
-      const existing = prev.find((c) => c.menuItemId === menuItemId)
-      if (!existing) return prev
-      return prev.map((c) =>
-        c.menuItemId === menuItemId ? { ...c, quantity } : c,
-      )
-    })
+  const setQuantity = (cartLineId: string, quantity: number) => {
+    setItems((current) =>
+      quantity <= 0
+        ? current.filter((item) => item.cartLineId !== cartLineId)
+        : current.map((item) =>
+            item.cartLineId === cartLineId ? { ...item, quantity } : item,
+          ),
+    )
   }
 
-  const totalItems = items.reduce((sum, i) => sum + i.quantity, 0)
+  const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
   const totalCents = items.reduce(
-    (sum, i) => sum + i.quantity * i.priceCents,
+    (sum, item) => sum + item.quantity * item.priceCents,
     0,
   )
 
@@ -101,7 +104,7 @@ export function useCart() {
     items,
     setItems,
     clear,
-    updateQuantity,
+    addConfiguredItem,
     setQuantity,
     totalItems,
     totalCents,

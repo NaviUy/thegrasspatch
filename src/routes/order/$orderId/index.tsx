@@ -11,6 +11,12 @@ type OrderItem = {
   name?: string | null
   quantity: number
   unitPriceCents: number
+  specialInstructions?: string | null
+  selectedOptions: Array<{
+    groupName: string
+    choiceName: string
+    priceAdjustmentCents: number
+  }>
 }
 
 type Order = {
@@ -395,6 +401,18 @@ function RouteComponent() {
                     <p className="text-xs text-slate-500">
                       ${formatDollars(item.unitPriceCents)} each
                     </p>
+                    {item.selectedOptions.length > 0 && (
+                      <p className="mt-1 text-xs text-slate-600">
+                        {item.selectedOptions
+                          .map((option) => option.choiceName)
+                          .join(', ')}
+                      </p>
+                    )}
+                    {item.specialInstructions && (
+                      <p className="mt-1 text-xs italic text-slate-500">
+                        Note: {item.specialInstructions}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-slate-700">

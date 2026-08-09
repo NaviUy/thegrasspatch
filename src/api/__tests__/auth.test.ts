@@ -45,6 +45,7 @@ describe('auth: signupWithInvite & loginWithPassword', () => {
 
   it('allows signup with a valid invite code', async () => {
     const result = await signupWithInvite({
+      name: 'Test Worker',
       email: testEmail,
       password: testPassword,
       inviteCode: testInviteCode,
@@ -79,6 +80,7 @@ describe('auth: signupWithInvite & loginWithPassword', () => {
   it('rejects signup with an already-used invite code', async () => {
     await expect(
       signupWithInvite({
+        name: 'Another Worker',
         email: 'another@example.com',
         password: 'whatever',
         inviteCode: testInviteCode,

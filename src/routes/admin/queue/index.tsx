@@ -15,6 +15,12 @@ type OrderItem = {
   name?: string | null
   quantity: number
   unitPriceCents: number
+  specialInstructions?: string | null
+  selectedOptions: Array<{
+    groupName: string
+    choiceName: string
+    priceAdjustmentCents: number
+  }>
 }
 
 type Order = {
@@ -105,19 +111,31 @@ function OrderCard({
       </div>
 
       <div className="space-y-1 text-xs text-slate-600">
-        {order.items.slice(0, 3).map((item) => (
-          <div key={item.id} className="flex justify-between">
-            <span className="truncate">{item.name ?? 'Item'}</span>
-            <span className="font-medium">
-              {item.quantity} × ${formatDollars(item.unitPriceCents)}
-            </span>
+        {order.items.map((item) => (
+          <div
+            key={item.id}
+            className="border-b border-slate-100 pb-1 last:border-0"
+          >
+            <div className="flex justify-between gap-2">
+              <span>{item.name ?? 'Item'}</span>
+              <span className="shrink-0 font-medium">
+                {item.quantity} × ${formatDollars(item.unitPriceCents)}
+              </span>
+            </div>
+            {item.selectedOptions.length > 0 && (
+              <p className="text-[11px] text-slate-500">
+                {item.selectedOptions
+                  .map((option) => option.choiceName)
+                  .join(', ')}
+              </p>
+            )}
+            {item.specialInstructions && (
+              <p className="text-[11px] font-medium italic text-slate-700">
+                Note: {item.specialInstructions}
+              </p>
+            )}
           </div>
         ))}
-        {order.items.length > 3 && (
-          <p className="text-[11px] text-slate-500">
-            +{order.items.length - 3} more…
-          </p>
-        )}
       </div>
       {assignedLabel && (
         <p className="text-xs text-slate-600">{assignedLabel}</p>

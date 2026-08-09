@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import jwt from 'jsonwebtoken'
 import { getActiveSession, refreshCartItems } from './menuItem'
 import { lockSessionInventoryRows } from './inventory'
+import { lockSessionOptionInventoryRows } from './options'
 import { db, schema } from '@/db/client'
 
 export type CreatePublicOrderInput = {
@@ -9,7 +10,14 @@ export type CreatePublicOrderInput = {
   customerPhone: string | null
   smsOptedInAt: Date | null
   smsConsentVersion: string | null
-  items: Array<{ menuItemId: string; quantity: number; name?: string }>
+  items: Array<{
+    cartLineId: string
+    menuItemId: string
+    quantity: number
+    name?: string
+    selectedOptionChoiceIds?: Array<string>
+    specialInstructions?: string
+  }>
 }
 
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET
@@ -52,6 +60,11 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
     await lockSessionInventoryRows(
       session.id,
       input.items.map((item) => item.menuItemId),
+      trx,
+    )
+    await lockSessionOptionInventoryRows(
+      session.id,
+      input.items.flatMap((item) => item.selectedOptionChoiceIds ?? []),
       trx,
     )
 
@@ -111,14 +124,33 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
 
     if (!order) throw new Error('Failed to create order.')
 
-    await trx.insert(schema.orderItems).values(
-      availability.active.map((item) => ({
-        orderId: order.id,
-        menuItemId: item.menuItemId,
-        quantity: item.quantity,
-        unitPriceCents: item.priceCents,
-      })),
-    )
+    for (const item of availability.active) {
+      const orderItem = (
+        await trx
+          .insert(schema.orderItems)
+          .values({
+            orderId: order.id,
+            menuItemId: item.menuItemId,
+            quantity: item.quantity,
+            unitPriceCents: item.priceCents,
+            specialInstructions: item.specialInstructions || null,
+          })
+          .returning({ id: schema.orderItems.id })
+      ).at(0)
+      if (!orderItem) throw new Error('Failed to create order item.')
+      if (item.selectedOptions.length) {
+        await trx.insert(schema.orderItemOptions).values(
+          item.selectedOptions.map((selected) => ({
+            orderItemId: orderItem.id,
+            optionGroupId: selected.optionGroupId,
+            optionChoiceId: selected.optionChoiceId,
+            groupName: selected.groupName,
+            choiceName: selected.choiceName,
+            priceAdjustmentCents: selected.priceAdjustmentCents,
+          })),
+        )
+      }
+    }
 
     return { order, availability }
   })
@@ -166,6 +198,7 @@ export async function getPublicOrder(orderId: string) {
       name: schema.menuItems.name,
       quantity: schema.orderItems.quantity,
       unitPriceCents: schema.orderItems.unitPriceCents,
+      specialInstructions: schema.orderItems.specialInstructions,
     })
     .from(schema.orderItems)
     .leftJoin(
@@ -174,9 +207,31 @@ export async function getPublicOrder(orderId: string) {
     )
     .where(eq(schema.orderItems.orderId, orderId))
 
+  const selectedOptions = items.length
+    ? await db
+        .select({
+          orderItemId: schema.orderItemOptions.orderItemId,
+          groupName: schema.orderItemOptions.groupName,
+          choiceName: schema.orderItemOptions.choiceName,
+          priceAdjustmentCents: schema.orderItemOptions.priceAdjustmentCents,
+        })
+        .from(schema.orderItemOptions)
+        .where(
+          inArray(
+            schema.orderItemOptions.orderItemId,
+            items.map((item) => item.id),
+          ),
+        )
+    : []
+
   return {
     ...order,
-    items,
+    items: items.map((item) => ({
+      ...item,
+      selectedOptions: selectedOptions.filter(
+        (selected) => selected.orderItemId === item.id,
+      ),
+    })),
     trackingJwt: signTrackingToken(order.trackingToken),
   }
 }
@@ -215,6 +270,7 @@ export async function listActiveSessionOrders() {
       name: schema.menuItems.name,
       quantity: schema.orderItems.quantity,
       unitPriceCents: schema.orderItems.unitPriceCents,
+      specialInstructions: schema.orderItems.specialInstructions,
     })
     .from(schema.orderItems)
     .leftJoin(
@@ -223,14 +279,37 @@ export async function listActiveSessionOrders() {
     )
     .where(inArray(schema.orderItems.orderId, orderIds))
 
-  const itemsByOrder = items.reduce<Record<string, typeof items>>(
-    (acc, item) => {
-      acc[item.orderId] = acc[item.orderId] || []
-      acc[item.orderId].push(item)
-      return acc
-    },
-    {},
-  )
+  const optionRows = items.length
+    ? await db
+        .select({
+          orderItemId: schema.orderItemOptions.orderItemId,
+          groupName: schema.orderItemOptions.groupName,
+          choiceName: schema.orderItemOptions.choiceName,
+          priceAdjustmentCents: schema.orderItemOptions.priceAdjustmentCents,
+        })
+        .from(schema.orderItemOptions)
+        .where(
+          inArray(
+            schema.orderItemOptions.orderItemId,
+            items.map((item) => item.id),
+          ),
+        )
+    : []
+
+  const enrichedItems = items.map((item) => ({
+    ...item,
+    selectedOptions: optionRows.filter(
+      (option) => option.orderItemId === item.id,
+    ),
+  }))
+
+  const itemsByOrder = enrichedItems.reduce<
+    Record<string, typeof enrichedItems>
+  >((acc, item) => {
+    acc[item.orderId] = acc[item.orderId] || []
+    acc[item.orderId].push(item)
+    return acc
+  }, {})
 
   return orders.map((order) => ({
     ...order,

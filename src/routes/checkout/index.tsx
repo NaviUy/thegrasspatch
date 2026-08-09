@@ -4,19 +4,21 @@ import { toast } from 'sonner'
 import type { FormEvent } from 'react'
 import type { CartItem } from '@/hooks/useCart'
 import { Button } from '@/components/ui/button'
-import { useCart } from '@/hooks/useCart'
+import { makeCartConfigurationKey, useCart } from '@/hooks/useCart'
 import { api } from '@/lib/apiClient'
 import { useActiveSession } from '@/hooks/useActiveSession'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 type RemovedCartItem = {
+  cartLineId: string
   menuItemId: string
   name?: string
-  reason: 'NOT_FOUND' | 'INACTIVE' | 'SOLD_OUT'
+  reason: 'NOT_FOUND' | 'INACTIVE' | 'SOLD_OUT' | 'OPTION_UNAVAILABLE'
 }
 
 type AdjustedCartItem = {
+  cartLineId: string
   menuItemId: string
   name: string
   requestedQuantity: number
@@ -26,12 +28,16 @@ type AdjustedCartItem = {
 
 type RefreshCartResponse = {
   active: Array<{
+    cartLineId: string
     menuItemId: string
     name: string
+    basePriceCents: number
     priceCents: number
     imageUrl?: string | null
     quantity: number
     remainingQuantity: number | null
+    selectedOptions: CartItem['selectedOptions']
+    specialInstructions: string
   }>
   removed: Array<RemovedCartItem>
   adjusted: Array<AdjustedCartItem>
@@ -48,7 +54,31 @@ function formatDollars(cents: number) {
 function removalReasonCopy(reason: RemovedCartItem['reason']) {
   if (reason === 'INACTIVE') return 'No longer available'
   if (reason === 'SOLD_OUT') return 'Sold out'
+  if (reason === 'OPTION_UNAVAILABLE') return 'Option unavailable'
   return 'Removed from the menu'
+}
+
+function refreshedItemToCartItem(
+  item: RefreshCartResponse['active'][number],
+): CartItem {
+  const configurationKey = makeCartConfigurationKey({
+    menuItemId: item.menuItemId,
+    selectedOptions: item.selectedOptions,
+    specialInstructions: item.specialInstructions,
+  })
+  return {
+    cartLineId: item.cartLineId,
+    configurationKey,
+    menuItemId: item.menuItemId,
+    name: item.name,
+    basePriceCents: item.basePriceCents,
+    priceCents: item.priceCents,
+    imageUrl: item.imageUrl ?? null,
+    quantity: item.quantity,
+    availableQuantity: item.remainingQuantity,
+    selectedOptions: item.selectedOptions,
+    specialInstructions: item.specialInstructions,
+  }
 }
 
 function RouteComponent() {
@@ -59,7 +89,7 @@ function RouteComponent() {
     open,
     session,
   } = useActiveSession()
-  const { items, setItems, totalItems, totalCents } = useCart()
+  const { items, setItems, setQuantity, totalItems, totalCents } = useCart()
   const [refreshing, setRefreshing] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [removedItems, setRemovedItems] = useState<Array<RemovedCartItem>>([])
@@ -74,26 +104,13 @@ function RouteComponent() {
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('mode') === 'demo'
 
-  const changeQuantity = (menuItemId: string, delta: number) => {
-    setItems((prev) => {
-      const updated = prev
-        .map((item) =>
-          item.menuItemId === menuItemId
-            ? {
-                ...item,
-                quantity: Math.max(
-                  0,
-                  item.availableQuantity === null ||
-                    item.availableQuantity === undefined
-                    ? item.quantity + delta
-                    : Math.min(item.quantity + delta, item.availableQuantity),
-                ),
-              }
-            : item,
-        )
-        .filter((item) => item.quantity > 0)
-      return updated
-    })
+  const changeQuantity = (item: CartItem, delta: number) => {
+    const requested = item.quantity + delta
+    const quantity =
+      item.availableQuantity === null || item.availableQuantity === undefined
+        ? requested
+        : Math.min(requested, item.availableQuantity)
+    setQuantity(item.cartLineId, quantity)
     toast.success('Cart updated')
   }
 
@@ -110,25 +127,21 @@ function RouteComponent() {
         }
 
         const payload = cartItems.map((item) => ({
+          cartLineId: item.cartLineId,
           menuItemId: item.menuItemId,
           quantity: item.quantity,
           name: item.name,
+          selectedOptionChoiceIds: item.selectedOptions.map(
+            (option) => option.optionChoiceId,
+          ),
+          specialInstructions: item.specialInstructions,
         }))
 
         const { active, removed, adjusted } = (await api.refreshPublicCart(
           payload,
         )) as RefreshCartResponse
 
-        setItems(
-          active.map((item) => ({
-            menuItemId: item.menuItemId,
-            name: item.name,
-            priceCents: item.priceCents,
-            imageUrl: item.imageUrl ?? null,
-            quantity: item.quantity,
-            availableQuantity: item.remainingQuantity,
-          })),
-        )
+        setItems(active.map(refreshedItemToCartItem))
         setRemovedItems(removed)
         setAdjustedItems(adjusted)
         return { active, removed, adjusted }
@@ -163,12 +176,52 @@ function RouteComponent() {
         if (cancelled) return
         setItems([
           {
+            cartLineId: crypto.randomUUID(),
+            configurationKey: makeCartConfigurationKey({
+              menuItemId: randomItem.id,
+              selectedOptions: randomItem.options.flatMap((group: any) =>
+                group.choices
+                  .filter(
+                    (choice: any) => choice.isDefault && !choice.isSoldOut,
+                  )
+                  .map((choice: any) => ({
+                    optionGroupId: group.id,
+                    optionChoiceId: choice.id,
+                    groupName: group.name,
+                    choiceName: choice.name,
+                    priceAdjustmentCents: choice.priceAdjustmentCents,
+                  })),
+              ),
+              specialInstructions: '',
+            }),
             menuItemId: randomItem.id,
             name: randomItem.name,
-            priceCents: randomItem.priceCents,
+            basePriceCents: randomItem.priceCents,
+            priceCents:
+              randomItem.priceCents +
+              randomItem.options
+                .flatMap((group: any) => group.choices)
+                .filter((choice: any) => choice.isDefault && !choice.isSoldOut)
+                .reduce(
+                  (sum: number, choice: any) =>
+                    sum + choice.priceAdjustmentCents,
+                  0,
+                ),
             imageUrl: randomItem.imageUrl ?? null,
             quantity: 1,
             availableQuantity: randomItem.availableQuantity,
+            selectedOptions: randomItem.options.flatMap((group: any) =>
+              group.choices
+                .filter((choice: any) => choice.isDefault && !choice.isSoldOut)
+                .map((choice: any) => ({
+                  optionGroupId: group.id,
+                  optionChoiceId: choice.id,
+                  groupName: group.name,
+                  choiceName: choice.name,
+                  priceAdjustmentCents: choice.priceAdjustmentCents,
+                })),
+            ),
+            specialInstructions: '',
           },
         ])
       } catch (err) {
@@ -225,9 +278,14 @@ function RouteComponent() {
         customerPhone: trimmedPhone || null,
         smsOptIn,
         items: refreshResult.active.map((item) => ({
+          cartLineId: item.cartLineId,
           menuItemId: item.menuItemId,
           quantity: item.quantity,
           name: item.name,
+          selectedOptionChoiceIds: item.selectedOptions.map(
+            (option) => option.optionChoiceId,
+          ),
+          specialInstructions: item.specialInstructions,
         })),
       })
 
@@ -251,16 +309,7 @@ function RouteComponent() {
       console.error(err)
       if (err.status === 409 && err.data) {
         const availability = err.data as RefreshCartResponse
-        setItems(
-          availability.active.map((item) => ({
-            menuItemId: item.menuItemId,
-            name: item.name,
-            priceCents: item.priceCents,
-            imageUrl: item.imageUrl ?? null,
-            quantity: item.quantity,
-            availableQuantity: item.remainingQuantity,
-          })),
-        )
+        setItems(availability.active.map(refreshedItemToCartItem))
         setRemovedItems(availability.removed)
         setAdjustedItems(availability.adjusted)
       }
@@ -344,7 +393,7 @@ function RouteComponent() {
                 <ul className="mt-2 space-y-1 text-sm text-red-700">
                   {removedItems.map((item) => (
                     <li
-                      key={item.menuItemId}
+                      key={item.cartLineId}
                       className="flex items-center justify-between gap-2"
                     >
                       <span>{item.name ?? 'Unknown item'}</span>
@@ -364,7 +413,7 @@ function RouteComponent() {
                 </p>
                 <ul className="mt-2 space-y-1 text-sm text-amber-800">
                   {adjustedItems.map((item) => (
-                    <li key={item.menuItemId}>
+                    <li key={item.cartLineId}>
                       {item.name}: {item.requestedQuantity} requested,{' '}
                       {item.availableQuantity} available
                     </li>
@@ -395,7 +444,7 @@ function RouteComponent() {
                   <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
                     {items.map((item) => (
                       <div
-                        key={item.menuItemId}
+                        key={item.cartLineId}
                         className="flex items-start justify-between gap-3 px-4 py-3"
                       >
                         <div className="min-w-0">
@@ -405,6 +454,18 @@ function RouteComponent() {
                           <p className="text-xs text-slate-500">
                             ${formatDollars(item.priceCents)} each
                           </p>
+                          {item.selectedOptions.length > 0 && (
+                            <p className="mt-1 text-xs text-slate-600">
+                              {item.selectedOptions
+                                .map((option) => option.choiceName)
+                                .join(', ')}
+                            </p>
+                          )}
+                          {item.specialInstructions && (
+                            <p className="mt-1 text-xs italic text-slate-500">
+                              Note: {item.specialInstructions}
+                            </p>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-2">
                           <div className="flex items-center gap-2">
@@ -412,9 +473,7 @@ function RouteComponent() {
                               type="button"
                               variant="outline"
                               size="icon"
-                              onClick={() =>
-                                changeQuantity(item.menuItemId, -1)
-                              }
+                              onClick={() => changeQuantity(item, -1)}
                               disabled={item.quantity === 0}
                             >
                               -
@@ -426,9 +485,7 @@ function RouteComponent() {
                               type="button"
                               variant="default"
                               size="icon"
-                              onClick={() =>
-                                changeQuantity(item.menuItemId, +1)
-                              }
+                              onClick={() => changeQuantity(item, +1)}
                               disabled={
                                 item.availableQuantity !== null &&
                                 item.availableQuantity !== undefined &&

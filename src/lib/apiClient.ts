@@ -45,6 +45,29 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json()
 }
 
+async function download(path: string, filename: string) {
+  const token = getAuthToken()
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+  if (!res.ok) {
+    let message = `Download failed with ${res.status}`
+    try {
+      const data = await res.json()
+      if (data?.error) message = data.error
+    } catch {}
+    throw new Error(message)
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 export const api = {
   login: (email: string, password: string) => {
     return request<{ token: string; user: any }>('/api/auth/login', {
@@ -75,6 +98,15 @@ export const api = {
       body: JSON.stringify(input),
     }),
   listSessions: () => request<{ sessions: Array<any> }>('/api/sessions'),
+  getSessionAnalytics: (sessionId: string) =>
+    request<{ analytics: any }>(
+      `/api/analytics/sessions/${encodeURIComponent(sessionId)}/summary`,
+    ),
+  downloadSessionAnalyticsCsv: (sessionId: string, filename: string) =>
+    download(
+      `/api/analytics/sessions/${encodeURIComponent(sessionId)}.csv`,
+      filename,
+    ),
   createSession: (name: string) =>
     request<{ session: any }>('/api/sessions', {
       method: 'POST',

@@ -64,6 +64,15 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
                     >
                       Menu
                     </Button>
+                    <Button
+                      variant="ghost"
+                      className="justify-start"
+                      onClick={() =>
+                        router.navigate({ to: '/admin/analytics' })
+                      }
+                    >
+                      Analytics
+                    </Button>
                   </>
                 )}
                 <Button

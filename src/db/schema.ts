@@ -105,6 +105,14 @@ export const sessions = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
     isActive: boolean('is_active').notNull().default(false),
     nextOrderNumber: integer('next_order_number').notNull().default(1),
+    waitEstimateMode: varchar('wait_estimate_mode', { length: 20 })
+      .notNull()
+      .default('AUTO'),
+    manualWaitMinMinutes: integer('manual_wait_min_minutes'),
+    manualWaitMaxMinutes: integer('manual_wait_max_minutes'),
+    parallelPreparationCapacity: integer('parallel_preparation_capacity')
+      .notNull()
+      .default(1),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -113,6 +121,18 @@ export const sessions = pgTable(
     nextOrderNumberPositive: check(
       'sessions_next_order_number_positive',
       sql`${table.nextOrderNumber} >= 1`,
+    ),
+    waitEstimateModeValid: check(
+      'sessions_wait_estimate_mode_valid',
+      sql`${table.waitEstimateMode} in ('AUTO', 'MANUAL', 'HIDDEN')`,
+    ),
+    manualWaitRangeValid: check(
+      'sessions_manual_wait_range_valid',
+      sql`(${table.manualWaitMinMinutes} is null and ${table.manualWaitMaxMinutes} is null) or (${table.manualWaitMinMinutes} >= 1 and ${table.manualWaitMaxMinutes} >= ${table.manualWaitMinMinutes})`,
+    ),
+    parallelPreparationCapacityPositive: check(
+      'sessions_parallel_preparation_capacity_positive',
+      sql`${table.parallelPreparationCapacity} >= 1`,
     ),
   }),
 )
@@ -188,6 +208,7 @@ export const orders = pgTable(
       onDelete: 'set null',
     }),
     assignedAt: timestamp('assigned_at', { withTimezone: true }),
+    makingAt: timestamp('making_at', { withTimezone: true }),
 
     totalPriceCents: integer('total_price_cents').notNull().default(0),
 
@@ -200,6 +221,9 @@ export const orders = pgTable(
       .defaultNow()
       .notNull(),
     fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
+    estimatedWaitMinMinutes: integer('estimated_wait_min_minutes'),
+    estimatedWaitMaxMinutes: integer('estimated_wait_max_minutes'),
+    waitEstimateSource: varchar('wait_estimate_source', { length: 20 }),
   },
   (table) => ({
     sessionOrderNumberUnique: uniqueIndex(
@@ -208,6 +232,10 @@ export const orders = pgTable(
     orderNumberPositive: check(
       'orders_order_number_positive',
       sql`${table.orderNumber} >= 1`,
+    ),
+    estimatedWaitRangeValid: check(
+      'orders_estimated_wait_range_valid',
+      sql`(${table.estimatedWaitMinMinutes} is null and ${table.estimatedWaitMaxMinutes} is null) or (${table.estimatedWaitMinMinutes} >= 1 and ${table.estimatedWaitMaxMinutes} >= ${table.estimatedWaitMinMinutes})`,
     ),
   }),
 )

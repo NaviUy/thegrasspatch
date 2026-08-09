@@ -13,6 +13,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
+import { SessionWaitEstimateControls } from '@/components/admin/SessionWaitEstimateControls'
 
 export const Route = createFileRoute('/admin/')({
   component: RouteComponent,
@@ -169,37 +170,42 @@ function RouteComponent() {
                 return (
                   <li
                     key={s.id}
-                    className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 bg-slate-50"
+                    className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"
                   >
-                    <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span>{s.name}</span>
+                          {s.isActive && (
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                      </div>
                       <div className="flex items-center gap-2">
-                        <span>{s.name}</span>
-                        {s.isActive && (
-                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                            Active
-                          </span>
+                        {s.isActive ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleClose(s.id)}
+                          >
+                            Close store
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleActivate(s.id)}
+                          >
+                            Open store
+                          </Button>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {s.isActive ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleClose(s.id)}
-                        >
-                          Close store
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={() => handleActivate(s.id)}
-                        >
-                          Open store
-                        </Button>
-                      )}
-                    </div>
+                    {s.isActive && (
+                      <SessionWaitEstimateControls sessionId={s.id} />
+                    )}
                   </li>
                 )
               })}

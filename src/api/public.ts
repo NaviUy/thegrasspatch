@@ -11,6 +11,7 @@ import {
   getPublicOrder,
 } from './order'
 import { SmsConsentValidationError, prepareSmsConsent } from '@/lib/smsConsent'
+import { getSessionWaitEstimate } from './waitEstimate'
 
 export const publicRouter = express.Router()
 
@@ -18,7 +19,8 @@ export const publicRouter = express.Router()
 publicRouter.get('/active-session', async (_req, res) => {
   try {
     const session = await getActiveSession()
-    res.json({ open: true, session })
+    const estimatedWait = await getSessionWaitEstimate(session.id)
+    res.json({ open: true, session: { ...session, estimatedWait } })
   } catch (error: any) {
     console.error('List menu error: ', error)
     res.status(500).json({ error: 'Failed to fetch active session.' })
@@ -29,9 +31,10 @@ publicRouter.get('/active-session', async (_req, res) => {
 publicRouter.get('/menu-items', async (_req, res) => {
   try {
     const session = await getActiveSession()
+    const estimatedWait = await getSessionWaitEstimate(session.id)
     const items = await getActiveMenuItems()
     res.set('Cache-Control', 'no-store')
-    return res.json({ session, items })
+    return res.json({ session: { ...session, estimatedWait }, items })
   } catch (error: any) {
     console.error(error)
     return res.status(500).json({ error: 'Failed to load menu items.' })

@@ -98,6 +98,23 @@ export const api = {
       body: JSON.stringify(input),
     }),
   listSessions: () => request<{ sessions: Array<any> }>('/api/sessions'),
+  getSessionWaitEstimate: (sessionId: string) =>
+    request<{ estimate: any }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/wait-estimate`,
+    ),
+  updateSessionWaitEstimate: (
+    sessionId: string,
+    input: {
+      mode: 'AUTO' | 'MANUAL' | 'HIDDEN'
+      manualMinMinutes: number | null
+      manualMaxMinutes: number | null
+      parallelCapacity: number
+    },
+  ) =>
+    request<{ estimate: any }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/wait-estimate`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    ),
   getSessionAnalytics: (sessionId: string) =>
     request<{ analytics: any }>(
       `/api/analytics/sessions/${encodeURIComponent(sessionId)}/summary`,

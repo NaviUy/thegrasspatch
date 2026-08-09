@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabaseClient'
 import { Input } from '@/components/ui/input'
 import { formatOrderNumber, matchesOrderSearch } from '@/lib/orderNumber'
+import { useActiveSession } from '@/hooks/useActiveSession'
+import { formatWaitEstimate } from '@/lib/waitEstimate'
 
 type OrderItem = {
   id: string
@@ -185,6 +187,8 @@ function OrderCard({
 
 function RouteComponent() {
   const { user, loading: authLoading, error: authError } = useAuthUser()
+  const { session: publicSession } = useActiveSession()
+  const customerWaitEstimate = formatWaitEstimate(publicSession?.estimatedWait)
   const [orders, setOrders] = useState<Array<Order>>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -467,6 +471,11 @@ function RouteComponent() {
               <p className="text-sm text-slate-600">
                 Active session orders only. Drag to assign to yourself.
               </p>
+              {customerWaitEstimate && (
+                <p className="mt-1 text-xs font-medium text-emerald-700">
+                  Customers currently see {customerWaitEstimate}.
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">

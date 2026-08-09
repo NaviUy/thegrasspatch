@@ -9,6 +9,7 @@ import { api } from '@/lib/apiClient'
 import { useActiveSession } from '@/hooks/useActiveSession'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { formatWaitEstimate } from '@/lib/waitEstimate'
 
 type RemovedCartItem = {
   cartLineId: string
@@ -103,6 +104,7 @@ function RouteComponent() {
   const isDemoMode =
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('mode') === 'demo'
+  const waitEstimate = formatWaitEstimate(session?.estimatedWait)
 
   const changeQuantity = (item: CartItem, delta: number) => {
     const requested = item.quantity + delta
@@ -363,6 +365,14 @@ function RouteComponent() {
         {!sessionLoading && !open && (
           <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800">
             The store is currently closed. You can still review your cart.
+          </div>
+        )}
+        {open && waitEstimate && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <span className="font-semibold">
+              Estimated wait: {waitEstimate}.
+            </span>{' '}
+            Your order will keep the estimate shown when it is submitted.
           </div>
         )}
 

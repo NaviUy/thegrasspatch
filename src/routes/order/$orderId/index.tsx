@@ -27,6 +27,9 @@ type Order = {
   customerPhone?: string | null
   totalPriceCents: number
   createdAt?: string
+  estimatedWaitMinMinutes?: number | null
+  estimatedWaitMaxMinutes?: number | null
+  waitEstimateSource?: 'AUTO' | 'MANUAL' | null
   trackingJwt?: string
   items: Array<OrderItem>
 }
@@ -69,6 +72,12 @@ function RouteComponent() {
 
   const [error, setError] = useState<string | null>(null)
   const [realtimeGeneration, setRealtimeGeneration] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000)
+    return () => window.clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -224,6 +233,25 @@ function RouteComponent() {
     return 'bg-slate-200 text-slate-800'
   }, [order?.status])
 
+  const estimatedReadyWindow = useMemo(() => {
+    if (
+      !order?.createdAt ||
+      order.status === 'READY' ||
+      order.estimatedWaitMinMinutes == null ||
+      order.estimatedWaitMaxMinutes == null
+    ) {
+      return null
+    }
+    const placedAt = new Date(order.createdAt).getTime()
+    const start = new Date(placedAt + order.estimatedWaitMinMinutes * 60_000)
+    const end = new Date(placedAt + order.estimatedWaitMaxMinutes * 60_000)
+    return {
+      start,
+      end,
+      overdue: now > end.getTime(),
+    }
+  }, [now, order])
+
   return (
     <main className="min-h-screen bg-slate-50 flex flex-col">
       <header className="w-full border-b border-slate-200 bg-white">
@@ -350,6 +378,32 @@ function RouteComponent() {
                 </div>
               </div>
             </div>
+
+            {order.status === 'READY' ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                <p className="text-sm font-semibold text-emerald-900">
+                  Ready for pickup.
+                </p>
+              </div>
+            ) : estimatedReadyWindow ? (
+              <div
+                className={`rounded-xl border px-4 py-4 ${
+                  estimatedReadyWindow.overdue
+                    ? 'border-amber-200 bg-amber-50'
+                    : 'border-emerald-200 bg-emerald-50'
+                }`}
+              >
+                <p className="text-sm font-semibold text-slate-900">
+                  {estimatedReadyWindow.overdue
+                    ? 'This is taking a little longer than estimated.'
+                    : `Estimated ready between ${estimatedReadyWindow.start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} and ${estimatedReadyWindow.end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Actual timing may vary. This estimate was saved when you
+                  placed your order.
+                </p>
+              </div>
+            ) : null}
 
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 space-y-2">
               <div className="flex items-center justify-between text-sm">

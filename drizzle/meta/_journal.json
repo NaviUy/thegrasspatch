@@ -106,6 +106,13 @@
       "when": 1786247262998,
       "tag": "20260809034742_add_estimated_wait_times",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1786248822050,
+      "tag": "0015_clear_molten_man",
+      "breakpoints": true
     }
   ]
 }

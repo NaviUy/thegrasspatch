@@ -7,8 +7,8 @@ import { eq } from 'drizzle-orm'
 import {
   getUserFromToken,
   loginWithPassword,
-  signupWithInvite,
   signSupabaseToken,
+  signupWithInvite,
 } from './api/auth'
 import {
   activateSession,
@@ -21,19 +21,24 @@ import {
   createMenuItem,
   deleteMenuItem,
   listMenuItems,
+  reorderMenuItems,
   updateMenuItem,
   updateMenuItemWithOptions,
 } from './api/menuItem'
 import { publicRouter } from './api/public'
 import {
+  OrderAvailabilityError,
+  OrderConflictError,
   assignOrderToUser,
+  cancelOrder,
+  correctOrder,
   listActiveSessionOrders,
-  updateOrderStatus,
+  listOrderEvents,
   unassignOrder,
+  updateOrderStatus,
 } from './api/order'
 import { db, schema } from './db/client'
 import { supabaseService } from './lib/supabaseServiceClient'
-import { reorderMenuItems } from './api/menuItem'
 import {
   getActiveSessionInventory,
   updateActiveSessionInventory,
@@ -59,6 +64,7 @@ app.use(express.json())
 app.use('/api/public', publicRouter)
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: {
@@ -158,7 +164,7 @@ app.post('/api/auth/login', async (req, res) => {
  * GET /api/auth/me
  * headers: Authorization: Bearer <token>
  */
-app.get('/api/auth/me', requireAuth, async (req, res) => {
+app.get('/api/auth/me', requireAuth, (req, res) => {
   const supabaseJwt = signSupabaseToken(req.user!)
   res.json({ user: req.user, supabaseJwt })
 })
@@ -192,7 +198,7 @@ app.patch('/api/auth/me', requireAuth, async (req, res) => {
  * Session routes
  */
 
-//List all sessions
+// List all sessions
 app.get('/api/sessions', requireAuth, async (_req, res) => {
   try {
     const sessions = await listSessions()
@@ -203,7 +209,7 @@ app.get('/api/sessions', requireAuth, async (_req, res) => {
   }
 })
 
-//Create a new session
+// Create a new session
 app.post('/api/sessions', requireAuth, async (req, res) => {
   const { name } = req.body ?? {}
   if (!name) {
@@ -219,7 +225,7 @@ app.post('/api/sessions', requireAuth, async (req, res) => {
   }
 })
 
-//Activating a session
+// Activating a session
 app.post('/api/sessions/:id/activate', requireAuth, async (req, res) => {
   const { id } = req.params
   try {
@@ -233,7 +239,7 @@ app.post('/api/sessions/:id/activate', requireAuth, async (req, res) => {
   }
 })
 
-//Deactivating a session
+// Deactivating a session
 app.post('/api/sessions/:id/close', requireAuth, async (req, res) => {
   const { id } = req.params
   try {
@@ -411,9 +417,7 @@ app.post('/api/invites', requireAuth, async (req, res) => {
   }
 
   if (role !== 'ADMIN' && role !== 'WORKER') {
-    return res
-      .status(400)
-      .json({ error: 'Role must be \"ADMIN\" or \"WORKER\".' })
+    return res.status(400).json({ error: 'Role must be "ADMIN" or "WORKER".' })
   }
 
   try {
@@ -429,7 +433,7 @@ app.post('/api/invites', requireAuth, async (req, res) => {
  * MenuItems routes
  */
 
-//list menu items
+// list menu items
 app.get('/api/menu-items', requireAuth, async (_req, res) => {
   try {
     const items = await listMenuItems()
@@ -441,7 +445,7 @@ app.get('/api/menu-items', requireAuth, async (_req, res) => {
   }
 })
 
-//create menu items (Admin only)
+// create menu items (Admin only)
 app.post('/api/menu-items', requireAuth, async (req, res) => {
   if (req.user?.role !== 'ADMIN') {
     return res.status(403).json({ error: 'Only admins can create menu items.' })
@@ -504,7 +508,7 @@ app.post(
         upsert: false,
       })
 
-    if (error || !data?.path) {
+    if (error || !data.path) {
       console.error('Upload error:', error)
       return res
         .status(500)
@@ -534,7 +538,7 @@ app.post(
   },
 )
 
-//update menu item (Admin only)
+// update menu item (Admin only)
 app.patch('/api/menu-items/:id', requireAuth, async (req, res) => {
   if (req.user?.role !== 'ADMIN') {
     return res.status(403).json({ error: 'Only admins can update menu items.' })
@@ -626,7 +630,7 @@ app.post('/api/menu-items/reorder', requireAuth, async (req, res) => {
   }
 })
 
-//delete menu item (Admin only)
+// delete menu item (Admin only)
 app.delete('/api/menu-items/:id', requireAuth, async (req, res) => {
   if (req.user?.role !== 'ADMIN') {
     return res.status(403).json({ error: 'Only admins can delete menu items.' })
@@ -696,6 +700,69 @@ app.patch('/api/orders/:id/status', requireAuth, async (req, res) => {
     const statusCode =
       message.includes('not found') || message.includes('Invalid') ? 400 : 400
     res.status(statusCode).json({ error: message })
+  }
+})
+
+app.patch('/api/orders/:id', requireAuth, async (req, res) => {
+  const { id } = req.params
+  const { version, reason, items } = req.body ?? {}
+  try {
+    const order = await correctOrder({
+      orderId: id,
+      version,
+      reason: typeof reason === 'string' ? reason : '',
+      items,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+    })
+    res.json({ order })
+  } catch (error: any) {
+    console.error('Correct order error: ', error)
+    if (error instanceof OrderConflictError) {
+      return res.status(409).json({ error: error.message })
+    }
+    if (error instanceof OrderAvailabilityError) {
+      return res.status(409).json({
+        error: error.message,
+        availability: error.availability,
+      })
+    }
+    const message = error?.message ?? 'Failed to correct order.'
+    res
+      .status(message.includes('not found') ? 404 : 400)
+      .json({ error: message })
+  }
+})
+
+app.post('/api/orders/:id/cancel', requireAuth, async (req, res) => {
+  const { id } = req.params
+  const { version, reason } = req.body ?? {}
+  try {
+    const order = await cancelOrder({
+      orderId: id,
+      version,
+      reason: typeof reason === 'string' ? reason : '',
+      userId: req.user!.id,
+      userRole: req.user!.role,
+    })
+    res.json({ order })
+  } catch (error: any) {
+    console.error('Cancel order error: ', error)
+    const message = error?.message ?? 'Failed to cancel order.'
+    const status = error instanceof OrderConflictError ? 409 : 400
+    res.status(status).json({ error: message })
+  }
+})
+
+app.get('/api/orders/:id/events', requireAuth, async (req, res) => {
+  try {
+    const events = await listOrderEvents(req.params.id)
+    res.json({ events })
+  } catch (error: any) {
+    console.error('List order events error: ', error)
+    res
+      .status(400)
+      .json({ error: error?.message ?? 'Failed to load order history.' })
   }
 })
 

@@ -7,6 +7,7 @@ export type AnalyticsOrderInput = {
 }
 
 export type AnalyticsItemInput = {
+  orderId?: string
   menuItemId: string
   itemName: string
   quantity: number
@@ -17,7 +18,19 @@ export function buildSessionAnalyticsSummary(
   orders: Array<AnalyticsOrderInput>,
   items: Array<AnalyticsItemInput>,
 ) {
-  const completedOrders = orders.filter((order) => order.status === 'READY')
+  const cancellationCount = orders.filter(
+    (order) => order.status === 'CANCELLED',
+  ).length
+  const reportableOrders = orders.filter(
+    (order) => order.status !== 'CANCELLED',
+  )
+  const reportableOrderIds = new Set(reportableOrders.map((order) => order.id))
+  const reportableItems = items.filter(
+    (item) => !item.orderId || reportableOrderIds.has(item.orderId),
+  )
+  const completedOrders = reportableOrders.filter(
+    (order) => order.status === 'READY',
+  )
   const preparationTimes = completedOrders
     .filter((order) => order.completedAt !== null)
     .map((order) =>
@@ -38,7 +51,7 @@ export function buildSessionAnalyticsSummary(
       revenueCents: number
     }
   >()
-  for (const item of items) {
+  for (const item of reportableItems) {
     const existing = productMap.get(item.menuItemId)
     productMap.set(item.menuItemId, {
       menuItemId: item.menuItemId,
@@ -51,14 +64,14 @@ export function buildSessionAnalyticsSummary(
 
   return {
     summary: {
-      orderCount: orders.length,
-      itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
-      revenueCents: orders.reduce(
+      orderCount: reportableOrders.length,
+      itemCount: reportableItems.reduce((sum, item) => sum + item.quantity, 0),
+      revenueCents: reportableOrders.reduce(
         (sum, order) => sum + order.totalPriceCents,
         0,
       ),
       completedOrderCount: completedOrders.length,
-      outstandingOrderCount: orders.length - completedOrders.length,
+      outstandingOrderCount: reportableOrders.length - completedOrders.length,
       averagePreparationSeconds: preparationTimes.length
         ? Math.round(
             preparationTimes.reduce((sum, seconds) => sum + seconds, 0) /
@@ -66,6 +79,7 @@ export function buildSessionAnalyticsSummary(
           )
         : null,
     },
+    cancellationCount,
     popularProducts: [...productMap.values()].sort(
       (a, b) =>
         b.quantity - a.quantity ||

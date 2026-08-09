@@ -235,7 +235,9 @@ export const api = {
     }),
   getPublicOrder: (id: string) =>
     request<{ order: any; trackingJwt: string }>(`/api/public/orders/${id}`),
-  listActiveOrders: (status?: 'PENDING' | 'MAKING' | 'READY' | 'ALL') => {
+  listActiveOrders: (
+    status?: 'PENDING' | 'MAKING' | 'READY' | 'CANCELLED' | 'ALL',
+  ) => {
     const query =
       status && status !== 'ALL' ? `?status=${encodeURIComponent(status)}` : ''
     return request<{ orders: Array<any> }>(`/api/orders/active${query}`)
@@ -253,6 +255,31 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }),
+  correctOrder: (
+    orderId: string,
+    input: {
+      version: number
+      reason: string
+      items: Array<{
+        lineId?: string
+        menuItemId: string
+        quantity: number
+        selectedOptionChoiceIds: Array<string>
+        specialInstructions: string
+      }>
+    },
+  ) =>
+    request<{ order: any }>(`/api/orders/${orderId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  cancelOrder: (orderId: string, version: number, reason: string) =>
+    request<{ order: any }>(`/api/orders/${orderId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ version, reason }),
+    }),
+  listOrderEvents: (orderId: string) =>
+    request<{ events: Array<any> }>(`/api/orders/${orderId}/events`),
   health: () => request<{ ok: boolean }>('/api/health'),
   reorderMenuItems: (ids: Array<string>) =>
     request<{ items: Array<any> }>('/api/menu-items/reorder', {

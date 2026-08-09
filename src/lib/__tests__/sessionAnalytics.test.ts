@@ -65,6 +65,52 @@ describe('buildSessionAnalyticsSummary', () => {
       quantity: 3,
       revenueCents: 1500,
     })
+    expect(result.cancellationCount).toBe(0)
+  })
+
+  it('excludes cancelled orders and their items from sales metrics', () => {
+    const result = buildSessionAnalyticsSummary(
+      [
+        {
+          id: 'kept',
+          status: 'READY',
+          totalPriceCents: 500,
+          createdAt: new Date('2026-08-08T20:00:00.000Z'),
+          completedAt: new Date('2026-08-08T20:05:00.000Z'),
+        },
+        {
+          id: 'cancelled',
+          status: 'CANCELLED',
+          totalPriceCents: 900,
+          createdAt: new Date('2026-08-08T20:01:00.000Z'),
+          completedAt: null,
+        },
+      ],
+      [
+        {
+          orderId: 'kept',
+          menuItemId: 'tea',
+          itemName: 'Tea',
+          quantity: 1,
+          unitPriceCents: 500,
+        },
+        {
+          orderId: 'cancelled',
+          menuItemId: 'coffee',
+          itemName: 'Coffee',
+          quantity: 2,
+          unitPriceCents: 450,
+        },
+      ],
+    )
+
+    expect(result.summary.orderCount).toBe(1)
+    expect(result.summary.itemCount).toBe(1)
+    expect(result.summary.revenueCents).toBe(500)
+    expect(result.cancellationCount).toBe(1)
+    expect(result.popularProducts.map((product) => product.name)).toEqual([
+      'Tea',
+    ])
   })
 
   it('returns no average when no completed order has a completion time', () => {

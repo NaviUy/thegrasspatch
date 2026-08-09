@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Reorder } from 'framer-motion'
+import type { EditableOrder } from '@/components/admin/EditOrderDialog'
 import { api } from '@/lib/apiClient'
 import { AdminLayout } from '@/components/admin/AdminLayout'
 import { useAuthUser } from '@/hooks/useAuthUser'
@@ -10,6 +11,15 @@ import { Input } from '@/components/ui/input'
 import { formatOrderNumber, matchesOrderSearch } from '@/lib/orderNumber'
 import { useActiveSession } from '@/hooks/useActiveSession'
 import { formatWaitEstimate } from '@/lib/waitEstimate'
+import { EditOrderDialog } from '@/components/admin/EditOrderDialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 type OrderItem = {
   id: string
@@ -19,6 +29,8 @@ type OrderItem = {
   unitPriceCents: number
   specialInstructions?: string | null
   selectedOptions: Array<{
+    optionGroupId?: string | null
+    optionChoiceId?: string | null
     groupName: string
     choiceName: string
     priceAdjustmentCents: number
@@ -30,11 +42,14 @@ type Order = {
   sessionId: string
   orderNumber?: number | null
   customerName: string
-  status: 'PENDING' | 'MAKING' | 'READY'
+  status: 'PENDING' | 'MAKING' | 'READY' | 'CANCELLED'
+  version: number
   assignedWorkerId?: string | null
   assignedWorkerName?: string | null
   totalPriceCents: number
   createdAt?: string
+  cancellationReason?: string | null
+  cancelledAt?: string | null
   items: Array<OrderItem>
 }
 
@@ -47,7 +62,7 @@ const STATUS_OPTIONS: Array<{
   { value: 'READY', label: 'Ready' },
 ]
 
-type StatusFilter = 'PENDING' | 'MAKING' | 'READY' | 'ALL'
+type StatusFilter = 'PENDING' | 'MAKING' | 'READY' | 'CANCELLED' | 'ALL'
 
 const STATUS_FILTERS: Array<{
   value: Exclude<StatusFilter, 'ALL'>
@@ -56,6 +71,7 @@ const STATUS_FILTERS: Array<{
   { value: 'PENDING', label: 'Pending' },
   { value: 'MAKING', label: 'Making' },
   { value: 'READY', label: 'Ready' },
+  { value: 'CANCELLED', label: 'Cancelled' },
 ]
 
 export const Route = createFileRoute('/admin/queue/')({
@@ -66,25 +82,42 @@ function formatDollars(cents: number) {
   return (cents / 100).toFixed(2)
 }
 
+function orderEventLabel(type: string) {
+  if (type === 'ORDER_CANCELLED') return 'Order cancelled'
+  if (type === 'ORDER_CORRECTED') return 'Order corrected'
+  if (type === 'ORDER_STATUS_CHANGED') return 'Status changed'
+  if (type === 'ORDER_ASSIGNED') return 'Order assigned'
+  if (type === 'ORDER_UNASSIGNED') return 'Order returned to pool'
+  return 'Order updated'
+}
+
 function OrderCard({
   order,
   onAssignToMe,
   onStatusChange,
   onUnassign,
+  onEdit,
+  onCancel,
+  onViewHistory,
   canDrag = false,
 }: {
   order: Order
   onAssignToMe: (orderId: string) => void
   onStatusChange?: (orderId: string, status: Order['status']) => void
   onUnassign?: (orderId: string) => void
+  onEdit?: (order: Order) => void
+  onCancel?: (order: Order) => void
+  onViewHistory?: (order: Order) => void
   canDrag?: boolean
 }) {
   const color =
-    order.status === 'READY'
-      ? 'bg-emerald-100 text-emerald-800'
-      : order.status === 'MAKING'
-        ? 'bg-amber-100 text-amber-800'
-        : 'bg-slate-200 text-slate-800'
+    order.status === 'CANCELLED'
+      ? 'bg-red-100 text-red-800'
+      : order.status === 'READY'
+        ? 'bg-emerald-100 text-emerald-800'
+        : order.status === 'MAKING'
+          ? 'bg-amber-100 text-amber-800'
+          : 'bg-slate-200 text-slate-800'
   const assignedLabel = order.assignedWorkerName
     ? `Assigned to ${order.assignedWorkerName}`
     : null
@@ -147,7 +180,7 @@ function OrderCard({
         <span className="text-slate-700">
           Total ${formatDollars(order.totalPriceCents)}
         </span>
-        {!order.assignedWorkerId ? (
+        {order.status !== 'CANCELLED' && !order.assignedWorkerId ? (
           <Button
             size="sm"
             variant="outline"
@@ -167,7 +200,36 @@ function OrderCard({
         ) : null}
       </div>
 
-      {onStatusChange && (
+      {(onEdit || onCancel || onViewHistory) && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+          {onEdit && (
+            <Button size="sm" variant="outline" onClick={() => onEdit(order)}>
+              Edit order
+            </Button>
+          )}
+          {onCancel && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-200 text-red-700 hover:bg-red-50"
+              onClick={() => onCancel(order)}
+            >
+              Cancel order
+            </Button>
+          )}
+          {onViewHistory && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onViewHistory(order)}
+            >
+              History
+            </Button>
+          )}
+        </div>
+      )}
+
+      {onStatusChange && order.status !== 'CANCELLED' && (
         <div className="flex items-center gap-2 flex-wrap">
           {STATUS_OPTIONS.map((opt) => (
             <Button
@@ -195,6 +257,18 @@ function RouteComponent() {
   const [assigning, setAssigning] = useState<string | null>(null)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
   const [unassigning, setUnassigning] = useState<string | null>(null)
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null)
+  const [editMenuItems, setEditMenuItems] = useState<Array<any>>([])
+  const [orderHistory, setOrderHistory] = useState<Array<any>>([])
+  const [historyOrder, setHistoryOrder] = useState<Order | null>(null)
+  const [viewHistoryEvents, setViewHistoryEvents] = useState<Array<any>>([])
+  const [savingCorrection, setSavingCorrection] = useState(false)
+  const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null)
+  const [cancellationReason, setCancellationReason] = useState('')
+  const [cancellationError, setCancellationError] = useState<string | null>(
+    null,
+  )
+  const [cancelling, setCancelling] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [realtimeGeneration, setRealtimeGeneration] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
@@ -250,6 +324,16 @@ function RouteComponent() {
     }
   }, [authLoading, fetchOrders, user])
 
+  const manager = user?.role === 'OWNER' || user?.role === 'ADMIN'
+  const canEditOrder = (order: Order) =>
+    (order.status === 'PENDING' || order.status === 'MAKING') &&
+    (manager || order.assignedWorkerId === user?.id)
+  const canCancelOrder = (order: Order) =>
+    order.status !== 'CANCELLED' &&
+    (manager ||
+      (order.assignedWorkerId === user?.id &&
+        (order.status === 'PENDING' || order.status === 'MAKING')))
+
   const searchedOrders = useMemo(
     () => orders.filter((order) => matchesOrderSearch(order, searchQuery)),
     [orders, searchQuery],
@@ -258,7 +342,9 @@ function RouteComponent() {
   const myOrders = useMemo(
     () =>
       searchedOrders.filter(
-        (o) => o.assignedWorkerId === user?.id && o.status !== 'READY',
+        (o) =>
+          o.assignedWorkerId === user?.id &&
+          (o.status === 'PENDING' || o.status === 'MAKING'),
       ),
     [searchedOrders, user?.id],
   )
@@ -327,6 +413,80 @@ function RouteComponent() {
       setError(err.message ?? 'Failed to return order to pool.')
     } finally {
       setUnassigning(null)
+    }
+  }
+
+  const openEditor = async (order: Order) => {
+    setEditingOrder(order)
+    setOrderHistory([])
+    setError(null)
+    try {
+      const [{ items }, { events }] = await Promise.all([
+        api.getPublicMenuItems(),
+        api.listOrderEvents(order.id),
+      ])
+      setEditMenuItems(items)
+      setOrderHistory(events)
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to load the order editor.')
+    }
+  }
+
+  const openHistory = async (order: Order) => {
+    setHistoryOrder(order)
+    setViewHistoryEvents([])
+    try {
+      const { events } = await api.listOrderEvents(order.id)
+      setViewHistoryEvents(events)
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to load order history.')
+    }
+  }
+
+  const saveCorrection = async (input: {
+    version: number
+    reason: string
+    items: Array<{
+      lineId?: string
+      menuItemId: string
+      quantity: number
+      selectedOptionChoiceIds: Array<string>
+      specialInstructions: string
+    }>
+  }) => {
+    if (!editingOrder) return
+    setSavingCorrection(true)
+    setError(null)
+    try {
+      const { order } = await api.correctOrder(editingOrder.id, input)
+      upsertOrder(order as Order)
+      setEditingOrder(null)
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to correct the order.')
+      throw err
+    } finally {
+      setSavingCorrection(false)
+    }
+  }
+
+  const confirmCancellation = async () => {
+    if (!cancellingOrder || cancellationReason.trim().length < 2) return
+    setCancelling(true)
+    setError(null)
+    setCancellationError(null)
+    try {
+      const { order } = await api.cancelOrder(
+        cancellingOrder.id,
+        cancellingOrder.version,
+        cancellationReason.trim(),
+      )
+      upsertOrder(order as Order)
+      setCancellingOrder(null)
+      setCancellationReason('')
+    } catch (err: any) {
+      setCancellationError(err.message ?? 'Failed to cancel the order.')
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -528,7 +688,12 @@ function RouteComponent() {
                     key={order.id}
                     order={order}
                     onAssignToMe={assignToMe}
-                    canDrag
+                    canDrag={order.status !== 'CANCELLED'}
+                    onEdit={canEditOrder(order) ? openEditor : undefined}
+                    onCancel={
+                      canCancelOrder(order) ? setCancellingOrder : undefined
+                    }
+                    onViewHistory={openHistory}
                   />
                 ))}
               </div>
@@ -579,6 +744,11 @@ function RouteComponent() {
                       onStatusChange={changeStatus}
                       onUnassign={unassign}
                       canDrag={false}
+                      onEdit={canEditOrder(order) ? openEditor : undefined}
+                      onCancel={
+                        canCancelOrder(order) ? setCancellingOrder : undefined
+                      }
+                      onViewHistory={openHistory}
                     />
                   </Reorder.Item>
                 ))}
@@ -625,6 +795,10 @@ function RouteComponent() {
                     onStatusChange={changeStatus}
                     onUnassign={unassign}
                     canDrag={false}
+                    onCancel={
+                      canCancelOrder(order) ? setCancellingOrder : undefined
+                    }
+                    onViewHistory={openHistory}
                   />
                 ))}
               </div>
@@ -632,6 +806,177 @@ function RouteComponent() {
           </div>
         </div>
       </div>
+
+      <EditOrderDialog
+        order={editingOrder as EditableOrder | null}
+        menuItems={editMenuItems}
+        open={!!editingOrder}
+        saving={savingCorrection}
+        history={orderHistory}
+        onOpenChange={(open) => {
+          if (!open && !savingCorrection) setEditingOrder(null)
+        }}
+        onSave={saveCorrection}
+      />
+
+      <Dialog
+        open={!!historyOrder}
+        onOpenChange={(open) => {
+          if (!open) setHistoryOrder(null)
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Order history</DialogTitle>
+            <DialogDescription>
+              {historyOrder
+                ? `${formatOrderNumber(historyOrder.orderNumber, historyOrder.id)} for ${historyOrder.customerName}`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {viewHistoryEvents.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              No corrections or cancellations have been recorded.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {[...viewHistoryEvents].reverse().map((event) => {
+                const before = event.before
+                const after = event.after
+                return (
+                  <div
+                    key={event.id}
+                    className="rounded-lg border border-slate-200 p-3"
+                  >
+                    <p className="text-sm font-semibold text-slate-900">
+                      {orderEventLabel(event.type)}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {event.actorName ?? 'Staff'} ·{' '}
+                      {new Date(event.createdAt).toLocaleString()}
+                    </p>
+                    {event.reason && (
+                      <p className="mt-2 text-sm text-slate-700">
+                        {event.reason}
+                      </p>
+                    )}
+                    {event.type === 'ORDER_CORRECTED' && before && after && (
+                      <details className="mt-2 text-xs text-slate-600">
+                        <summary className="cursor-pointer font-medium text-slate-800">
+                          View before and after
+                        </summary>
+                        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                          {[
+                            ['Before', before],
+                            ['After', after],
+                          ].map(([label, snapshot]: any) => (
+                            <div
+                              key={label}
+                              className="rounded bg-slate-50 p-2"
+                            >
+                              <p className="font-semibold">{label}</p>
+                              {(snapshot.items ?? []).map((item: any) => (
+                                <p key={item.id} className="mt-1">
+                                  {item.quantity} × {item.name}
+                                  {item.selectedOptions?.length
+                                    ? ` · ${item.selectedOptions.map((option: any) => option.choiceName).join(', ')}`
+                                    : ''}
+                                  {item.specialInstructions
+                                    ? ` · Note: ${item.specialInstructions}`
+                                    : ''}
+                                </p>
+                              ))}
+                              <p className="mt-2 font-medium">
+                                Total $
+                                {formatDollars(snapshot.totalPriceCents ?? 0)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setHistoryOrder(null)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!cancellingOrder}
+        onOpenChange={(open) => {
+          if (!open && !cancelling) {
+            setCancellingOrder(null)
+            setCancellationReason('')
+            setCancellationError(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel this order?</DialogTitle>
+            <DialogDescription>
+              {cancellingOrder
+                ? `${formatOrderNumber(cancellingOrder.orderNumber, cancellingOrder.id)} for ${cancellingOrder.customerName} will leave the active queue and its inventory will be restored.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <label
+              htmlFor="cancellation-reason"
+              className="text-sm font-semibold text-slate-900"
+            >
+              Cancellation reason
+            </label>
+            <textarea
+              id="cancellation-reason"
+              rows={3}
+              maxLength={250}
+              value={cancellationReason}
+              onChange={(event) =>
+                setCancellationReason(event.target.value.slice(0, 250))
+              }
+              className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+              placeholder="For example: Customer requested cancellation"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              This reason is kept in staff history and is not shown to the
+              customer.
+            </p>
+            {cancellationError && (
+              <p className="mt-2 text-sm text-red-600">{cancellationError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={cancelling}
+              onClick={() => setCancellingOrder(null)}
+            >
+              Keep order
+            </Button>
+            <Button
+              type="button"
+              disabled={cancelling || cancellationReason.trim().length < 2}
+              className="bg-red-600 text-white hover:bg-red-700"
+              onClick={confirmCancellation}
+            >
+              {cancelling ? 'Cancelling…' : 'Cancel order'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   )
 }

@@ -230,6 +230,7 @@ function RouteComponent() {
     const status = (order?.status ?? 'PENDING').toUpperCase()
     if (status === 'READY') return 'bg-emerald-100 text-emerald-800'
     if (status === 'MAKING') return 'bg-amber-100 text-amber-800'
+    if (status === 'CANCELLED') return 'bg-red-100 text-red-800'
     return 'bg-slate-200 text-slate-800'
   }, [order?.status])
 
@@ -237,6 +238,7 @@ function RouteComponent() {
     if (
       !order?.createdAt ||
       order.status === 'READY' ||
+      order.status === 'CANCELLED' ||
       order.estimatedWaitMinMinutes == null ||
       order.estimatedWaitMaxMinutes == null
     ) {
@@ -304,12 +306,34 @@ function RouteComponent() {
           </div>
         ) : (
           <>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4">
-              <p className="text-sm font-semibold text-emerald-800">
-                Thanks, {order.customerName}! We're on it.
+            <div
+              className={`rounded-xl border px-4 py-4 ${
+                order.status === 'CANCELLED'
+                  ? 'border-red-200 bg-red-50'
+                  : 'border-emerald-200 bg-emerald-50'
+              }`}
+            >
+              <p
+                className={`text-sm font-semibold ${
+                  order.status === 'CANCELLED'
+                    ? 'text-red-900'
+                    : 'text-emerald-800'
+                }`}
+              >
+                {order.status === 'CANCELLED'
+                  ? `This order has been cancelled.`
+                  : `Thanks, ${order.customerName}! We're on it.`}
               </p>
-              <p className="text-xs text-emerald-800 mt-1">
-                We'll keep this page updated as your order moves to ready.
+              <p
+                className={`mt-1 text-xs ${
+                  order.status === 'CANCELLED'
+                    ? 'text-red-800'
+                    : 'text-emerald-800'
+                }`}
+              >
+                {order.status === 'CANCELLED'
+                  ? 'If you have questions, contact hello@thegrasspatch.cafe.'
+                  : `We'll keep this page updated as your order moves to ready.`}
               </p>
             </div>
 
@@ -330,56 +354,62 @@ function RouteComponent() {
                 </span>
               </div>
 
-              <div className="space-y-3">
-                <div className="relative pt-6">
-                  <div className="absolute left-0 right-0 top-3 h-2 rounded-full bg-slate-100 overflow-hidden">
-                    <div
-                      className="absolute left-0 top-0 h-full bg-emerald-500 transition-[width] duration-500 ease-out"
-                      style={{ width: `${progressPercent}%` }}
-                    />
-                  </div>
-                  <div className="relative z-10 flex items-start justify-between gap-2">
-                    {TRACKING_STEPS.map((step, index) => {
-                      const active = index <= trackerIndex
-                      const current = index === trackerIndex
-                      return (
-                        <div
-                          key={step.key}
-                          className="flex-1 min-w-0 flex flex-col items-center text-center gap-2"
-                        >
+              {order.status === 'CANCELLED' ? (
+                <p className="text-sm text-slate-600">
+                  Tracking has ended because this order was cancelled.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="relative pt-6">
+                    <div className="absolute left-0 right-0 top-3 h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="absolute left-0 top-0 h-full bg-emerald-500 transition-[width] duration-500 ease-out"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                    <div className="relative z-10 flex items-start justify-between gap-2">
+                      {TRACKING_STEPS.map((step, index) => {
+                        const active = index <= trackerIndex
+                        const current = index === trackerIndex
+                        return (
                           <div
-                            className={`h-4 w-4 rounded-full border-2 ${
-                              active
-                                ? 'bg-emerald-500 border-emerald-500'
-                                : 'bg-white border-slate-300'
-                            }`}
-                          />
-                          <div className="space-y-1">
-                            <p
-                              className={`text-xs font-semibold leading-tight ${
-                                active ? 'text-emerald-800' : 'text-slate-700'
+                            key={step.key}
+                            className="flex-1 min-w-0 flex flex-col items-center text-center gap-2"
+                          >
+                            <div
+                              className={`h-4 w-4 rounded-full border-2 ${
+                                active
+                                  ? 'bg-emerald-500 border-emerald-500'
+                                  : 'bg-white border-slate-300'
                               }`}
-                            >
-                              {step.label}
-                            </p>
-                            <p className="text-[11px] text-slate-500 leading-tight">
-                              {step.description}
-                            </p>
-                            {current && (
-                              <p className="text-[11px] text-emerald-700 font-medium">
-                                In progress
+                            />
+                            <div className="space-y-1">
+                              <p
+                                className={`text-xs font-semibold leading-tight ${
+                                  active ? 'text-emerald-800' : 'text-slate-700'
+                                }`}
+                              >
+                                {step.label}
                               </p>
-                            )}
+                              <p className="text-[11px] text-slate-500 leading-tight">
+                                {step.description}
+                              </p>
+                              {current && (
+                                <p className="text-[11px] text-emerald-700 font-medium">
+                                  In progress
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {order.status === 'READY' ? (
+            {order.status === 'CANCELLED' ? null : order.status === 'READY' ? (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4">
                 <p className="text-sm font-semibold text-emerald-900">
                   Ready for pickup.

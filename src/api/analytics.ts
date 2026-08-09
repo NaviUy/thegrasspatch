@@ -94,6 +94,7 @@ export async function getSessionAnalytics(sessionId: string) {
       completedAt: order.completedAt,
     })),
     report.items.map((item) => ({
+      orderId: item.orderId,
       menuItemId: item.menuItemId,
       itemName: item.itemName,
       quantity: item.quantity,

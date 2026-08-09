@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { db, schema } from '@/db/client'
 import { getInventoryAvailability } from '@/lib/inventory'
 
@@ -46,6 +46,7 @@ async function soldQuantitiesByMenuItem(
   sessionId: string,
   menuItemIds: Array<string>,
   client: DatabaseClient = db,
+  excludeOrderId?: string,
 ) {
   if (menuItemIds.length === 0) return new Map<string, number>()
 
@@ -59,6 +60,8 @@ async function soldQuantitiesByMenuItem(
     .where(
       and(
         eq(schema.orders.sessionId, sessionId),
+        ne(schema.orders.status, 'CANCELLED'),
+        excludeOrderId ? ne(schema.orders.id, excludeOrderId) : undefined,
         inArray(schema.orderItems.menuItemId, menuItemIds),
       ),
     )
@@ -74,7 +77,11 @@ async function soldQuantitiesByMenuItem(
 
 export async function listSessionInventory(
   sessionId: string,
-  options: { includeInactive?: boolean; client?: DatabaseClient } = {},
+  options: {
+    includeInactive?: boolean
+    client?: DatabaseClient
+    excludeOrderId?: string
+  } = {},
 ): Promise<Array<SessionInventoryItem>> {
   const client = options.client ?? db
   await ensureSessionInventoryRows(sessionId, client)
@@ -110,6 +117,7 @@ export async function listSessionInventory(
     sessionId,
     rows.map((row: { menuItemId: string }) => row.menuItemId),
     client,
+    options.excludeOrderId,
   )
 
   return rows.map((row: any) => {

@@ -92,6 +92,13 @@
       "when": 1786228820898,
       "tag": "0012_add_item_options",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786246296042,
+      "tag": "20260809033136_snapshot_order_item_names",
+      "breakpoints": true
     }
   ]
 }

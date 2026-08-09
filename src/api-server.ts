@@ -39,6 +39,7 @@ import {
   updateActiveSessionInventory,
 } from './api/inventory'
 import { updateActiveOptionInventory } from './api/options'
+import { getSessionAnalytics, getSessionAnalyticsCsv } from './api/analytics'
 
 const MENU_IMAGE_BUCKET = process.env.SUPABASE_MENU_BUCKET || 'menu-images'
 const upload = multer({
@@ -239,6 +240,59 @@ app.post('/api/sessions/:id/close', requireAuth, async (req, res) => {
     res
       .status(400)
       .json({ error: error?.message ?? 'Failed to close session.' })
+  }
+})
+
+function canViewAnalytics(role?: string) {
+  return role === 'OWNER' || role === 'ADMIN'
+}
+
+app.get(
+  '/api/analytics/sessions/:id/summary',
+  requireAuth,
+  async (req, res) => {
+    if (!canViewAnalytics(req.user?.role)) {
+      return res
+        .status(403)
+        .json({ error: 'Only owners and admins can view analytics.' })
+    }
+    try {
+      const analytics = await getSessionAnalytics(req.params.id)
+      res.set('Cache-Control', 'no-store')
+      res.json({ analytics })
+    } catch (error: any) {
+      const message = error?.message ?? 'Failed to load session analytics.'
+      res.status(message === 'Session not found.' ? 404 : 500).json({
+        error: message,
+      })
+    }
+  },
+)
+
+app.get('/api/analytics/sessions/:id.csv', requireAuth, async (req, res) => {
+  if (!canViewAnalytics(req.user?.role)) {
+    return res
+      .status(403)
+      .json({ error: 'Only owners and admins can export analytics.' })
+  }
+  try {
+    const { session, csv } = await getSessionAnalyticsCsv(req.params.id)
+    const safeName = session.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    res.set('Cache-Control', 'no-store')
+    res.set('Content-Type', 'text/csv; charset=utf-8')
+    res.set(
+      'Content-Disposition',
+      `attachment; filename="${safeName || 'session'}-analytics.csv"`,
+    )
+    res.send(`\uFEFF${csv}`)
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to export session analytics.'
+    res.status(message === 'Session not found.' ? 404 : 500).json({
+      error: message,
+    })
   }
 })
 

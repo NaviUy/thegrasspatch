@@ -23,6 +23,7 @@ import { Route as AdminProfileIndexRouteImport } from './routes/admin/profile/in
 import { Route as AdminMenuIndexRouteImport } from './routes/admin/menu/index'
 import { Route as AdminLoginIndexRouteImport } from './routes/admin/login/index'
 import { Route as AdminInvitesIndexRouteImport } from './routes/admin/invites/index'
+import { Route as AdminAnalyticsIndexRouteImport } from './routes/admin/analytics/index'
 import { Route as AdminSignupInviteCodeIndexRouteImport } from './routes/admin/signup/$inviteCode/index'
 
 const TermsRoute = TermsRouteImport.update({
@@ -95,6 +96,11 @@ const AdminInvitesIndexRoute = AdminInvitesIndexRouteImport.update({
   path: '/admin/invites/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminAnalyticsIndexRoute = AdminAnalyticsIndexRouteImport.update({
+  id: '/admin/analytics/',
+  path: '/admin/analytics/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminSignupInviteCodeIndexRoute =
   AdminSignupInviteCodeIndexRouteImport.update({
     id: '/admin/signup/$inviteCode/',
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminIndexRoute
   '/checkout': typeof CheckoutIndexRoute
   '/menu': typeof MenuIndexRoute
+  '/admin/analytics': typeof AdminAnalyticsIndexRoute
   '/admin/invites': typeof AdminInvitesIndexRoute
   '/admin/login': typeof AdminLoginIndexRoute
   '/admin/menu': typeof AdminMenuIndexRoute
@@ -127,6 +134,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/checkout': typeof CheckoutIndexRoute
   '/menu': typeof MenuIndexRoute
+  '/admin/analytics': typeof AdminAnalyticsIndexRoute
   '/admin/invites': typeof AdminInvitesIndexRoute
   '/admin/login': typeof AdminLoginIndexRoute
   '/admin/menu': typeof AdminMenuIndexRoute
@@ -145,6 +153,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/checkout/': typeof CheckoutIndexRoute
   '/menu/': typeof MenuIndexRoute
+  '/admin/analytics/': typeof AdminAnalyticsIndexRoute
   '/admin/invites/': typeof AdminInvitesIndexRoute
   '/admin/login/': typeof AdminLoginIndexRoute
   '/admin/menu/': typeof AdminMenuIndexRoute
@@ -164,6 +173,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/checkout'
     | '/menu'
+    | '/admin/analytics'
     | '/admin/invites'
     | '/admin/login'
     | '/admin/menu'
@@ -181,6 +191,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/checkout'
     | '/menu'
+    | '/admin/analytics'
     | '/admin/invites'
     | '/admin/login'
     | '/admin/menu'
@@ -198,6 +209,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/checkout/'
     | '/menu/'
+    | '/admin/analytics/'
     | '/admin/invites/'
     | '/admin/login/'
     | '/admin/menu/'
@@ -216,6 +228,7 @@ export interface RootRouteChildren {
   AdminIndexRoute: typeof AdminIndexRoute
   CheckoutIndexRoute: typeof CheckoutIndexRoute
   MenuIndexRoute: typeof MenuIndexRoute
+  AdminAnalyticsIndexRoute: typeof AdminAnalyticsIndexRoute
   AdminInvitesIndexRoute: typeof AdminInvitesIndexRoute
   AdminLoginIndexRoute: typeof AdminLoginIndexRoute
   AdminMenuIndexRoute: typeof AdminMenuIndexRoute
@@ -326,6 +339,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminInvitesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/analytics/': {
+      id: '/admin/analytics/'
+      path: '/admin/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AdminAnalyticsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/signup/$inviteCode/': {
       id: '/admin/signup/$inviteCode/'
       path: '/admin/signup/$inviteCode'
@@ -344,6 +364,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminIndexRoute: AdminIndexRoute,
   CheckoutIndexRoute: CheckoutIndexRoute,
   MenuIndexRoute: MenuIndexRoute,
+  AdminAnalyticsIndexRoute: AdminAnalyticsIndexRoute,
   AdminInvitesIndexRoute: AdminInvitesIndexRoute,
   AdminLoginIndexRoute: AdminLoginIndexRoute,
   AdminMenuIndexRoute: AdminMenuIndexRoute,

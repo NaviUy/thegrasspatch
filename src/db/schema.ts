@@ -224,6 +224,8 @@ export const orderItems = pgTable('order_items', {
     .notNull()
     .references(() => menuItems.id, { onDelete: 'restrict' }),
 
+  itemName: varchar('item_name', { length: 255 }).notNull(),
+
   quantity: integer('quantity').notNull(),
 
   // how many have been fulfilled (for per-item checkboxes)

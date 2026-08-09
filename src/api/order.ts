@@ -131,6 +131,7 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
           .values({
             orderId: order.id,
             menuItemId: item.menuItemId,
+            itemName: item.name,
             quantity: item.quantity,
             unitPriceCents: item.priceCents,
             specialInstructions: item.specialInstructions || null,
@@ -195,7 +196,7 @@ export async function getPublicOrder(orderId: string) {
     .select({
       id: schema.orderItems.id,
       menuItemId: schema.orderItems.menuItemId,
-      name: schema.menuItems.name,
+      name: schema.orderItems.itemName,
       quantity: schema.orderItems.quantity,
       unitPriceCents: schema.orderItems.unitPriceCents,
       specialInstructions: schema.orderItems.specialInstructions,
@@ -267,7 +268,7 @@ export async function listActiveSessionOrders() {
       id: schema.orderItems.id,
       orderId: schema.orderItems.orderId,
       menuItemId: schema.orderItems.menuItemId,
-      name: schema.menuItems.name,
+      name: schema.orderItems.itemName,
       quantity: schema.orderItems.quantity,
       unitPriceCents: schema.orderItems.unitPriceCents,
       specialInstructions: schema.orderItems.specialInstructions,
@@ -409,6 +410,11 @@ export async function updateOrderStatus(input: {
     .set({
       status: input.status,
       updatedAt: new Date(),
+      ...(input.status === 'READY'
+        ? {
+            fulfilledAt: sql`coalesce(${schema.orders.fulfilledAt}, now())`,
+          }
+        : {}),
     })
     .where(eq(schema.orders.id, input.orderId))
     .returning()

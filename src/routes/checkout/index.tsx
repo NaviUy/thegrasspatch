@@ -731,7 +731,7 @@ function RouteComponent() {
                   ) : (
                     <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
                       <p className="text-sm font-semibold text-emerald-900">
-                        No payment is due for this prepaid order.
+                        No payment is due.
                       </p>
                       <p className="mt-1 text-xs text-emerald-800">
                         You can leave an optional tip after the order is

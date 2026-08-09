@@ -4,9 +4,22 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/**'
+      - 'src/api/*.ts'
+      - 'src/db/*.ts'
+      - 'src/api-server.ts'
+      - 'src/lambda-handler.ts'
+      - 'src/lib/checkoutTip.ts'
+      - 'src/lib/inventory.ts'
+      - 'src/lib/itemOptions.ts'
+      - 'src/lib/paymentReconciliation.ts'
+      - 'src/lib/sessionAnalytics.ts'
+      - 'src/lib/smsConsent.ts'
+      - 'src/lib/stripe.ts'
+      - 'src/lib/supabaseServiceClient.ts'
+      - 'src/lib/waitEstimate.ts'
       - 'package.json'
       - 'package-lock.json'
+      - 'tsconfig.json'
       - '.github/workflows/backend.yml'
   workflow_dispatch:
 

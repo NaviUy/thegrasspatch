@@ -4,11 +4,25 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/**'
+      - 'src/components/**'
+      - 'src/hooks/**'
+      - 'src/routes/**'
+      - 'src/main.tsx'
+      - 'src/router.tsx'
+      - 'src/routeTree.gen.ts'
+      - 'src/styles.css'
+      - 'src/lib/apiClient.ts'
+      - 'src/lib/checkoutTip.ts'
+      - 'src/lib/orderNumber.ts'
+      - 'src/lib/supabaseClient.ts'
+      - 'src/lib/utils.ts'
+      - 'src/lib/waitEstimate.ts'
       - 'public/**'
       - 'index.html'
       - 'package.json'
       - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'vite.spa.config.ts'
       - '.github/workflows/frontend.yml'
   workflow_dispatch:
 

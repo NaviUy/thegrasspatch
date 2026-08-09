@@ -4,7 +4,11 @@ import { toast } from 'sonner'
 import { api } from '@/lib/apiClient'
 import { Button } from '@/components/ui/button'
 import { ProductCard } from '@/components/ProductCard'
-import { useCart } from '@/hooks/useCart'
+import { useCart, type CartOption } from '@/hooks/useCart'
+import {
+  CustomizeItemDialog,
+  type MenuOptionGroup,
+} from '@/components/CustomizeItemDialog'
 
 export const Route = createFileRoute('/menu/')({
   loader: async () => {
@@ -49,43 +53,74 @@ type MenuItem = {
   isSoldOut: boolean
   isLimitedAvailability: boolean
   availableQuantity: number | null
+  options: Array<MenuOptionGroup>
 }
 
 function RouteComponent() {
   const router = useRouter()
   const { open, session, items } = Route.useLoaderData()
-  const { items: cart, updateQuantity, totalItems, totalCents } = useCart()
+  const { items: cart, addConfiguredItem, totalItems, totalCents } = useCart()
 
-  // cart helper
-  const adjustQuantity = (item: MenuItem, delta: number) => {
-    const currentQuantity = getQuantity(item.id)
-    if (delta > 0 && item.isSoldOut) return
+  const addToCart = (
+    item: MenuItem,
+    configuration: {
+      selectedOptions: Array<CartOption>
+      specialInstructions: string
+      priceCents: number
+    },
+  ) => {
+    const itemQuantity = cart
+      .filter((line) => line.menuItemId === item.id)
+      .reduce((sum, line) => sum + line.quantity, 0)
     if (
-      delta > 0 &&
       item.availableQuantity !== null &&
-      currentQuantity >= item.availableQuantity
+      itemQuantity >= item.availableQuantity
     ) {
       toast.error('No more are currently available.')
-      return
+      return false
     }
-    updateQuantity({
+
+    for (const option of configuration.selectedOptions) {
+      const choice = item.options
+        .flatMap((group) => group.choices)
+        .find((candidate) => candidate.id === option.optionChoiceId)
+      const quantityInCart = cart.reduce(
+        (sum, line) =>
+          line.selectedOptions.some(
+            (selected) => selected.optionChoiceId === option.optionChoiceId,
+          )
+            ? sum + line.quantity
+            : sum,
+        0,
+      )
+      if (
+        choice?.remainingQuantity !== null &&
+        choice?.remainingQuantity !== undefined &&
+        quantityInCart >= choice.remainingQuantity
+      ) {
+        toast.error(`${choice.name} is no longer available for another item.`)
+        return false
+      }
+    }
+
+    addConfiguredItem({
       menuItemId: item.id,
       name: item.name,
-      priceCents: item.priceCents,
+      basePriceCents: item.priceCents,
+      priceCents: configuration.priceCents,
       imageUrl: item.imageUrl ?? null,
       availableQuantity: item.availableQuantity,
-      // cart currently ignores placeholder; keeping API unchanged
-      delta,
+      selectedOptions: configuration.selectedOptions,
+      specialInstructions: configuration.specialInstructions,
     })
-    if (delta > 0) {
-      toast.success(`Added ${item.name} to cart`)
-    } else if (delta < 0) {
-      toast.success(`Removed ${item.name} from cart`)
-    }
+    toast.success(`Added ${item.name} to cart`)
+    return true
   }
 
   const getQuantity = (itemId: string) =>
-    cart.find((c) => c.menuItemId === itemId)?.quantity ?? 0
+    cart
+      .filter((line) => line.menuItemId === itemId)
+      .reduce((sum, line) => sum + line.quantity, 0)
 
   if (!open) {
     return (
@@ -137,7 +172,7 @@ function RouteComponent() {
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Menu</h2>
             <p className="text-sm text-slate-500">
-              Tap + to add drinks to your order.
+              Choose an item to customize and add to your order.
             </p>
           </div>
           {totalItems > 0 && (
@@ -175,29 +210,15 @@ function RouteComponent() {
                         Limited availability
                       </span>
                     ) : null}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => adjustQuantity(item, -1)}
-                      disabled={qty === 0}
-                    >
-                      -
-                    </Button>
-                    <span className="w-6 text-center text-sm">{qty}</span>
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="icon"
-                      onClick={() => adjustQuantity(item, +1)}
-                      disabled={
-                        item.isSoldOut ||
-                        (item.availableQuantity !== null &&
-                          qty >= item.availableQuantity)
-                      }
-                    >
-                      +
-                    </Button>
+                    {qty > 0 && (
+                      <span className="text-sm text-slate-600">
+                        {qty} in cart
+                      </span>
+                    )}
+                    <CustomizeItemDialog
+                      item={item}
+                      onAdd={(configuration) => addToCart(item, configuration)}
+                    />
                   </div>
                 </ProductCard>
               )

@@ -22,6 +22,7 @@ import {
   deleteMenuItem,
   listMenuItems,
   updateMenuItem,
+  updateMenuItemWithOptions,
 } from './api/menuItem'
 import { publicRouter } from './api/public'
 import {
@@ -37,6 +38,7 @@ import {
   getActiveSessionInventory,
   updateActiveSessionInventory,
 } from './api/inventory'
+import { updateActiveOptionInventory } from './api/options'
 
 const MENU_IMAGE_BUCKET = process.env.SUPABASE_MENU_BUCKET || 'menu-images'
 const upload = multer({
@@ -370,7 +372,7 @@ app.post('/api/menu-items', requireAuth, async (req, res) => {
       badges,
       isActive,
     })
-    res.status(201).json({ item })
+    res.status(201).json({ item: { ...item, options: [] } })
   } catch (error: any) {
     console.error('Create menu item error: ', error)
     res.status(500).json({ error: 'Failed to create menu item.' })
@@ -446,19 +448,32 @@ app.patch('/api/menu-items/:id', requireAuth, async (req, res) => {
   }
 
   const { id } = req.params
-  const { name, priceCents, imageUrl, imagePlaceholderUrl, badges, isActive } =
-    req.body ?? {}
+  const {
+    name,
+    priceCents,
+    imageUrl,
+    imagePlaceholderUrl,
+    badges,
+    isActive,
+    options,
+  } = req.body ?? {}
 
   try {
-    const item = await updateMenuItem(id, {
+    const updates = {
       name,
       priceCents,
       imageUrl,
       imagePlaceholderUrl,
       badges,
       isActive,
-    })
-    res.json({ item })
+    }
+    const item = Array.isArray(options)
+      ? await updateMenuItemWithOptions(id, updates, options)
+      : await updateMenuItem(id, updates)
+    const updated = (await listMenuItems()).find(
+      (candidate) => candidate.id === id,
+    )
+    res.json({ item: updated ?? item })
   } catch (error: any) {
     console.error('Update menu item error: ', error)
     res
@@ -466,6 +481,37 @@ app.patch('/api/menu-items/:id', requireAuth, async (req, res) => {
       .json({ error: error?.message ?? 'Failed to update menu item' })
   }
 })
+
+app.patch(
+  '/api/inventory/active/options/:optionChoiceId',
+  requireAuth,
+  async (req, res) => {
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'OWNER') {
+      return res
+        .status(403)
+        .json({ error: 'Only owners and admins can update inventory.' })
+    }
+    try {
+      const result = await updateActiveOptionInventory({
+        optionChoiceId: req.params.optionChoiceId,
+        ...(Object.prototype.hasOwnProperty.call(
+          req.body ?? {},
+          'inventoryLimit',
+        )
+          ? { inventoryLimit: req.body.inventoryLimit }
+          : {}),
+        ...(Object.prototype.hasOwnProperty.call(req.body ?? {}, 'isSoldOut')
+          ? { isSoldOut: req.body.isSoldOut }
+          : {}),
+      })
+      res.json(result)
+    } catch (error: any) {
+      res
+        .status(400)
+        .json({ error: error?.message ?? 'Failed to update option inventory.' })
+    }
+  },
+)
 
 // reorder menu items (Admin only)
 app.post('/api/menu-items/reorder', requireAuth, async (req, res) => {

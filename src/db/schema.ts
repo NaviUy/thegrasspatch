@@ -45,6 +45,58 @@ export const menuItems = pgTable('menu_items', {
     .notNull(),
 })
 
+export const menuItemOptionGroups = pgTable(
+  'menu_item_option_groups',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    menuItemId: uuid('menu_item_id')
+      .notNull()
+      .references(() => menuItems.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 100 }).notNull(),
+    selectionType: varchar('selection_type', { length: 20 }).notNull(),
+    isRequired: boolean('is_required').notNull().default(false),
+    minSelections: integer('min_selections').notNull().default(0),
+    maxSelections: integer('max_selections'),
+    position: integer('position').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    selectionLimitsValid: check(
+      'menu_item_option_groups_selection_limits_valid',
+      sql`${table.minSelections} >= 0 and (${table.maxSelections} is null or ${table.maxSelections} >= ${table.minSelections})`,
+    ),
+  }),
+)
+
+export const menuItemOptionChoices = pgTable(
+  'menu_item_option_choices',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => menuItemOptionGroups.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 100 }).notNull(),
+    priceAdjustmentCents: integer('price_adjustment_cents')
+      .notNull()
+      .default(0),
+    isDefault: boolean('is_default').notNull().default(false),
+    isActive: boolean('is_active').notNull().default(true),
+    position: integer('position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    priceAdjustmentNonnegative: check(
+      'menu_item_option_choices_price_adjustment_nonnegative',
+      sql`${table.priceAdjustmentCents} >= 0`,
+    ),
+  }),
+)
+
 /** SESSIONS (e.g. “Friday Night 7–10pm”) */
 export const sessions = pgTable(
   'sessions',
@@ -85,6 +137,27 @@ export const sessionMenuItems = pgTable(
     pk: primaryKey({ columns: [table.sessionId, table.menuItemId] }),
     inventoryLimitNonnegative: check(
       'session_menu_items_inventory_limit_nonnegative',
+      sql`${table.inventoryLimit} is null or ${table.inventoryLimit} >= 0`,
+    ),
+  }),
+)
+
+export const sessionOptionChoices = pgTable(
+  'session_option_choices',
+  {
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    optionChoiceId: uuid('option_choice_id')
+      .notNull()
+      .references(() => menuItemOptionChoices.id, { onDelete: 'cascade' }),
+    inventoryLimit: integer('inventory_limit'),
+    isSoldOut: boolean('is_sold_out').notNull().default(false),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.sessionId, table.optionChoiceId] }),
+    inventoryLimitNonnegative: check(
+      'session_option_choices_inventory_limit_nonnegative',
       sql`${table.inventoryLimit} is null or ${table.inventoryLimit} >= 0`,
     ),
   }),
@@ -158,6 +231,25 @@ export const orderItems = pgTable('order_items', {
 
   // price at the time of order (in cents)
   unitPriceCents: integer('unit_price_cents').notNull(),
+  specialInstructions: varchar('special_instructions', { length: 200 }),
+})
+
+export const orderItemOptions = pgTable('order_item_options', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orderItemId: uuid('order_item_id')
+    .notNull()
+    .references(() => orderItems.id, { onDelete: 'cascade' }),
+  optionGroupId: uuid('option_group_id').references(
+    () => menuItemOptionGroups.id,
+    { onDelete: 'set null' },
+  ),
+  optionChoiceId: uuid('option_choice_id').references(
+    () => menuItemOptionChoices.id,
+    { onDelete: 'set null' },
+  ),
+  groupName: varchar('group_name', { length: 100 }).notNull(),
+  choiceName: varchar('choice_name', { length: 100 }).notNull(),
+  priceAdjustmentCents: integer('price_adjustment_cents').notNull().default(0),
 })
 
 /** Optional: SMS log for Twilio later */

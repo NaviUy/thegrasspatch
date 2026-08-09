@@ -128,9 +128,18 @@ export const api = {
       imagePlaceholderUrl?: string | null
       badges?: Array<{ label: string; color?: string }>
       isActive: boolean
+      options: Array<any>
     }>,
   ) =>
     request<{ item: any }>(`/api/menu-items/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }),
+  updateActiveOptionInventory: (
+    optionChoiceId: string,
+    updates: { inventoryLimit?: number | null; isSoldOut?: boolean },
+  ) =>
+    request<{ ok: true }>(`/api/inventory/active/options/${optionChoiceId}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
     }),
@@ -157,7 +166,14 @@ export const api = {
     customerName: string
     customerPhone?: string | null
     smsOptIn: boolean
-    items: Array<{ menuItemId: string; quantity: number; name?: string }>
+    items: Array<{
+      cartLineId: string
+      menuItemId: string
+      quantity: number
+      name?: string
+      selectedOptionChoiceIds?: Array<string>
+      specialInstructions?: string
+    }>
   }) =>
     request<{
       order: any

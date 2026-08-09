@@ -39,6 +39,10 @@ import {
   updateActiveSessionInventory,
 } from './api/inventory'
 import { updateActiveOptionInventory } from './api/options'
+import {
+  getSessionWaitEstimate,
+  updateSessionWaitSettings,
+} from './api/waitEstimate'
 import { getSessionAnalytics, getSessionAnalyticsCsv } from './api/analytics'
 
 const MENU_IMAGE_BUCKET = process.env.SUPABASE_MENU_BUCKET || 'menu-images'
@@ -240,6 +244,41 @@ app.post('/api/sessions/:id/close', requireAuth, async (req, res) => {
     res
       .status(400)
       .json({ error: error?.message ?? 'Failed to close session.' })
+  }
+})
+
+app.get('/api/sessions/:id/wait-estimate', requireAuth, async (req, res) => {
+  try {
+    const estimate = await getSessionWaitEstimate(req.params.id)
+    res.set('Cache-Control', 'no-store')
+    res.json({ estimate })
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to load wait estimate.'
+    res.status(message === 'Session not found.' ? 404 : 500).json({
+      error: message,
+    })
+  }
+})
+
+app.patch('/api/sessions/:id/wait-estimate', requireAuth, async (req, res) => {
+  if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+    return res.status(403).json({
+      error: 'Only owners and admins can change wait estimate settings.',
+    })
+  }
+  try {
+    const estimate = await updateSessionWaitSettings(req.params.id, {
+      mode: req.body?.mode,
+      manualMinMinutes: req.body?.manualMinMinutes ?? null,
+      manualMaxMinutes: req.body?.manualMaxMinutes ?? null,
+      parallelCapacity: req.body?.parallelCapacity,
+    })
+    res.json({ estimate })
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to update wait estimate.'
+    res.status(message === 'Session not found.' ? 404 : 400).json({
+      error: message,
+    })
   }
 })
 

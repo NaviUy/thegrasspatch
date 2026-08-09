@@ -9,6 +9,7 @@ import {
   CustomizeItemDialog,
   type MenuOptionGroup,
 } from '@/components/CustomizeItemDialog'
+import { formatWaitEstimate } from '@/lib/waitEstimate'
 
 export const Route = createFileRoute('/menu/')({
   loader: async () => {
@@ -60,6 +61,7 @@ function RouteComponent() {
   const router = useRouter()
   const { open, session, items } = Route.useLoaderData()
   const { items: cart, addConfiguredItem, totalItems, totalCents } = useCart()
+  const waitEstimate = formatWaitEstimate(session?.estimatedWait)
 
   const addToCart = (
     item: MenuItem,
@@ -168,6 +170,16 @@ function RouteComponent() {
       </header>
 
       <section className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 space-y-4">
+        {waitEstimate && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-sm font-semibold text-emerald-900">
+              Estimated wait: {waitEstimate}
+            </p>
+            <p className="text-xs text-emerald-700">
+              This is an estimate for a new order; actual timing may vary.
+            </p>
+          </div>
+        )}
         <div className="flex items-baseline justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Menu</h2>

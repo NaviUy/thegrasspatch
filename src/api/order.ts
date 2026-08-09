@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken'
 import { getActiveSession, refreshCartItems } from './menuItem'
 import { lockSessionInventoryRows } from './inventory'
 import { lockSessionOptionInventoryRows } from './options'
+import { getSessionWaitEstimate } from './waitEstimate'
 import { db, schema } from '@/db/client'
 
 export type CreatePublicOrderInput = {
@@ -56,6 +57,8 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
     ).at(0)
 
     if (!session) throw new Error('Active session not found.')
+
+    const waitEstimate = await getSessionWaitEstimate(session.id, trx)
 
     await lockSessionInventoryRows(
       session.id,
@@ -118,6 +121,9 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
           smsOptedInAt: input.smsOptedInAt,
           smsConsentVersion: input.smsConsentVersion,
           totalPriceCents,
+          estimatedWaitMinMinutes: waitEstimate.minMinutes,
+          estimatedWaitMaxMinutes: waitEstimate.maxMinutes,
+          waitEstimateSource: waitEstimate.source,
         })
         .returning()
     ).at(0)
@@ -182,6 +188,9 @@ export async function getPublicOrder(orderId: string) {
       trackingToken: schema.orders.trackingToken,
       createdAt: schema.orders.createdAt,
       updatedAt: schema.orders.updatedAt,
+      estimatedWaitMinMinutes: schema.orders.estimatedWaitMinMinutes,
+      estimatedWaitMaxMinutes: schema.orders.estimatedWaitMaxMinutes,
+      waitEstimateSource: schema.orders.waitEstimateSource,
     })
     .from(schema.orders)
     .leftJoin(schema.users, eq(schema.users.id, schema.orders.assignedWorkerId))
@@ -410,6 +419,9 @@ export async function updateOrderStatus(input: {
     .set({
       status: input.status,
       updatedAt: new Date(),
+      ...(input.status === 'MAKING'
+        ? { makingAt: sql`coalesce(${schema.orders.makingAt}, now())` }
+        : {}),
       ...(input.status === 'READY'
         ? {
             fulfilledAt: sql`coalesce(${schema.orders.fulfilledAt}, now())`,

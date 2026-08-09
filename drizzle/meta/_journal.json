@@ -113,6 +113,13 @@
       "when": 1786248822050,
       "tag": "0015_clear_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1786251565667,
+      "tag": "20260809050135_add_stripe_payment_foundation",
+      "breakpoints": true
     }
   ]
 }

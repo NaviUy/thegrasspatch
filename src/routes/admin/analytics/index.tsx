@@ -29,7 +29,7 @@ type Analytics = {
     revenueCents: number
   }>
   cancellationCount: number
-  tips: { status: 'NOT_TRACKED'; totalCents: null }
+  tips: { status: 'TRACKED'; totalCents: number }
 }
 
 export const Route = createFileRoute('/admin/analytics/')({
@@ -253,10 +253,10 @@ function RouteComponent() {
               <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <p className="text-sm text-slate-500">Tips</p>
                 <p className="mt-1 text-xl font-semibold text-slate-900">
-                  Not tracked
+                  {dollars(analytics.tips.totalCents)}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  Stripe tip payments are not connected yet.
+                  Verified Stripe tips after refunds.
                 </p>
               </div>
             </div>

@@ -27,6 +27,9 @@ async function loadSessionReport(sessionId: string) {
       customerName: schema.orders.customerName,
       status: schema.orders.status,
       totalPriceCents: schema.orders.totalPriceCents,
+      checkoutTipCents: schema.orders.checkoutTipCents,
+      postOrderTipCents: schema.orders.postOrderTipCents,
+      tipAmountRefundedCents: schema.orders.tipAmountRefundedCents,
       createdAt: schema.orders.createdAt,
       updatedAt: schema.orders.updatedAt,
       fulfilledAt: schema.orders.fulfilledAt,
@@ -105,7 +108,20 @@ export async function getSessionAnalytics(sessionId: string) {
   return {
     session: report.session,
     ...metrics,
-    tips: { status: 'NOT_TRACKED' as const, totalCents: null },
+    tips: {
+      status: 'TRACKED' as const,
+      totalCents: report.orders.reduce(
+        (sum, order) =>
+          sum +
+          Math.max(
+            0,
+            order.checkoutTipCents +
+              order.postOrderTipCents -
+              order.tipAmountRefundedCents,
+          ),
+        0,
+      ),
+    },
   }
 }
 
@@ -145,8 +161,15 @@ export async function getSessionAnalyticsCsv(sessionId: string) {
             preparationSeconds === null
               ? ''
               : (preparationSeconds / 60).toFixed(1),
-          tipAmount: null,
-          tipStatus: 'Not tracked' as const,
+          tipAmount: (
+            Math.max(
+              0,
+              order.checkoutTipCents +
+                order.postOrderTipCents -
+                order.tipAmountRefundedCents,
+            ) / 100
+          ).toFixed(2),
+          tipStatus: 'Tracked' as const,
         }
       }),
     ),

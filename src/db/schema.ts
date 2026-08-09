@@ -1,6 +1,7 @@
 import {
   boolean,
   check,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -214,6 +215,22 @@ export const orders = pgTable(
 
     totalPriceCents: integer('total_price_cents').notNull().default(0),
 
+    // Payment state is deliberately separate from the kitchen workflow status.
+    paymentStatus: varchar('payment_status', { length: 24 })
+      .notNull()
+      .default('NOT_REQUIRED'),
+    paymentExpiresAt: timestamp('payment_expires_at', { withTimezone: true }),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    foodAmountPaidCents: integer('food_amount_paid_cents').notNull().default(0),
+    checkoutTipCents: integer('checkout_tip_cents').notNull().default(0),
+    postOrderTipCents: integer('post_order_tip_cents').notNull().default(0),
+    foodAmountRefundedCents: integer('food_amount_refunded_cents')
+      .notNull()
+      .default(0),
+    tipAmountRefundedCents: integer('tip_amount_refunded_cents')
+      .notNull()
+      .default(0),
+
     trackingToken: uuid('tracking_token').notNull().defaultRandom(),
 
     createdAt: timestamp('created_at', { withTimezone: true })
@@ -248,9 +265,117 @@ export const orders = pgTable(
       'orders_status_valid',
       sql`${table.status} in ('PENDING', 'MAKING', 'READY', 'CANCELLED')`,
     ),
+    paymentStatusValid: check(
+      'orders_payment_status_valid',
+      sql`${table.paymentStatus} in ('NOT_REQUIRED', 'PENDING', 'PAID', 'PARTIALLY_REFUNDED', 'REFUNDED', 'FAILED', 'EXPIRED')`,
+    ),
+    paymentAmountsNonnegative: check(
+      'orders_payment_amounts_nonnegative',
+      sql`${table.foodAmountPaidCents} >= 0 and ${table.checkoutTipCents} >= 0 and ${table.postOrderTipCents} >= 0 and ${table.foodAmountRefundedCents} >= 0 and ${table.tipAmountRefundedCents} >= 0`,
+    ),
     estimatedWaitRangeValid: check(
       'orders_estimated_wait_range_valid',
       sql`(${table.estimatedWaitMinMinutes} is null and ${table.estimatedWaitMaxMinutes} is null) or (${table.estimatedWaitMinMinutes} >= 1 and ${table.estimatedWaitMaxMinutes} >= ${table.estimatedWaitMinMinutes})`,
+    ),
+  }),
+)
+
+/** Stripe payments associated with an order, including post-order tips. */
+export const orderPayments = pgTable(
+  'order_payments',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    orderId: uuid('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    kind: varchar('kind', { length: 24 }).notNull(),
+    status: varchar('status', { length: 24 }).notNull().default('PENDING'),
+    currency: varchar('currency', { length: 3 }).notNull().default('usd'),
+    amountCents: integer('amount_cents').notNull(),
+    foodAmountCents: integer('food_amount_cents').notNull().default(0),
+    tipAmountCents: integer('tip_amount_cents').notNull().default(0),
+    refundedAmountCents: integer('refunded_amount_cents').notNull().default(0),
+    providerCheckoutSessionId: varchar('provider_checkout_session_id', {
+      length: 255,
+    }),
+    providerPaymentIntentId: varchar('provider_payment_intent_id', {
+      length: 255,
+    }),
+    providerChargeId: varchar('provider_charge_id', { length: 255 }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    succeededAt: timestamp('succeeded_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    orderIdIndex: index('order_payments_order_id_idx').on(table.orderId),
+    statusIndex: index('order_payments_status_idx').on(table.status),
+    checkoutSessionUnique: uniqueIndex(
+      'order_payments_provider_checkout_session_id_unique',
+    ).on(table.providerCheckoutSessionId),
+    paymentIntentUnique: uniqueIndex(
+      'order_payments_provider_payment_intent_id_unique',
+    ).on(table.providerPaymentIntentId),
+    kindValid: check(
+      'order_payments_kind_valid',
+      sql`${table.kind} in ('ORDER_CHECKOUT', 'POST_ORDER_TIP')`,
+    ),
+    statusValid: check(
+      'order_payments_status_valid',
+      sql`${table.status} in ('PENDING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'PARTIALLY_REFUNDED', 'REFUNDED')`,
+    ),
+    amountsValid: check(
+      'order_payments_amounts_valid',
+      sql`${table.amountCents} >= 0 and ${table.foodAmountCents} >= 0 and ${table.tipAmountCents} >= 0 and ${table.refundedAmountCents} >= 0 and ${table.amountCents} = ${table.foodAmountCents} + ${table.tipAmountCents} and ${table.refundedAmountCents} <= ${table.amountCents}`,
+    ),
+  }),
+)
+
+/** Durable refund attempts for automatic retries and reconciliation. */
+export const paymentRefunds = pgTable(
+  'payment_refunds',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    orderPaymentId: uuid('order_payment_id')
+      .notNull()
+      .references(() => orderPayments.id, { onDelete: 'cascade' }),
+    status: varchar('status', { length: 20 }).notNull().default('PENDING'),
+    amountCents: integer('amount_cents').notNull(),
+    foodAmountCents: integer('food_amount_cents').notNull().default(0),
+    tipAmountCents: integer('tip_amount_cents').notNull().default(0),
+    reason: varchar('reason', { length: 250 }),
+    idempotencyKey: varchar('idempotency_key', { length: 255 })
+      .notNull()
+      .unique(),
+    providerRefundId: varchar('provider_refund_id', { length: 255 }).unique(),
+    requestedByUserId: uuid('requested_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    lastError: text('last_error'),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    orderPaymentIdIndex: index('payment_refunds_order_payment_id_idx').on(
+      table.orderPaymentId,
+    ),
+    statusIndex: index('payment_refunds_status_idx').on(table.status),
+    statusValid: check(
+      'payment_refunds_status_valid',
+      sql`${table.status} in ('PENDING', 'SUCCEEDED', 'FAILED', 'CANCELED')`,
+    ),
+    amountsValid: check(
+      'payment_refunds_amounts_valid',
+      sql`${table.amountCents} > 0 and ${table.foodAmountCents} >= 0 and ${table.tipAmountCents} >= 0 and ${table.amountCents} = ${table.foodAmountCents} + ${table.tipAmountCents}`,
     ),
   }),
 )

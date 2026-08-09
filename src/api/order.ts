@@ -1,16 +1,27 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import jwt from 'jsonwebtoken'
 import { getActiveSession, refreshCartItems } from './menuItem'
 import { lockSessionInventoryRows } from './inventory'
 import { lockSessionOptionInventoryRows } from './options'
 import { getSessionWaitEstimate } from './waitEstimate'
+import {
+  createStripeCheckoutSession,
+  markCheckoutSetupFailed,
+  processPaymentRefunds,
+  queueOrderCancellationRefund,
+  queueOrderCorrectionRefund,
+} from './payments'
 import { db, schema } from '@/db/client'
+import { calculateCheckoutTipCents } from '@/lib/checkoutTip'
+import { calculatePaymentReconciliation } from '@/lib/paymentReconciliation'
 
 export type CreatePublicOrderInput = {
   customerName: string
   customerPhone: string | null
   smsOptedInAt: Date | null
   smsConsentVersion: string | null
+  tipSelection?: string | null
+  customTipCents?: number | null
   items: Array<{
     cartLineId: string
     menuItemId: string
@@ -179,6 +190,15 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
       (sum, item) => sum + item.priceCents * item.quantity,
       0,
     )
+    const checkoutTipCents = calculateCheckoutTipCents({
+      foodAmountCents: totalPriceCents,
+      selection: input.tipSelection,
+      customTipCents: input.customTipCents,
+    })
+    const paymentRequired = totalPriceCents > 0
+    const initialPaymentExpiresAt = paymentRequired
+      ? new Date(Date.now() + 30 * 60 * 1000)
+      : null
 
     const numberState = (
       await trx
@@ -212,6 +232,8 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
           smsOptedInAt: input.smsOptedInAt,
           smsConsentVersion: input.smsConsentVersion,
           totalPriceCents,
+          paymentStatus: paymentRequired ? 'PENDING' : 'NOT_REQUIRED',
+          paymentExpiresAt: initialPaymentExpiresAt,
           estimatedWaitMinMinutes: waitEstimate.minMinutes,
           estimatedWaitMaxMinutes: waitEstimate.maxMinutes,
           waitEstimateSource: waitEstimate.source,
@@ -220,6 +242,26 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
     ).at(0)
 
     if (!order) throw new Error('Failed to create order.')
+
+    const payment = paymentRequired
+      ? (
+          await trx
+            .insert(schema.orderPayments)
+            .values({
+              orderId: order.id,
+              kind: 'ORDER_CHECKOUT',
+              status: 'PENDING',
+              amountCents: totalPriceCents + checkoutTipCents,
+              foodAmountCents: totalPriceCents,
+              tipAmountCents: checkoutTipCents,
+              expiresAt: initialPaymentExpiresAt,
+            })
+            .returning()
+        ).at(0)
+      : null
+    if (paymentRequired && !payment) {
+      throw new Error('Failed to create the payment reservation.')
+    }
 
     for (const item of availability.active) {
       const orderItem = (
@@ -250,14 +292,35 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
       }
     }
 
-    return { order, availability }
+    return { order, payment, availability }
   })
 
   const trackingJwt = signTrackingToken(result.order.trackingToken)
+  let checkoutUrl: string | null = null
+  let paymentExpiresAt = result.order.paymentExpiresAt
+
+  if (result.payment) {
+    try {
+      const checkout = await createStripeCheckoutSession({
+        orderId: result.order.id,
+        orderNumber: result.order.orderNumber,
+        paymentId: result.payment.id,
+        foodAmountCents: result.payment.foodAmountCents,
+        tipAmountCents: result.payment.tipAmountCents,
+      })
+      checkoutUrl = checkout.checkoutUrl
+      paymentExpiresAt = checkout.expiresAt
+    } catch (error) {
+      await markCheckoutSetupFailed(result.order.id, result.payment.id)
+      throw error
+    }
+  }
 
   return {
-    order: result.order,
+    order: { ...result.order, paymentExpiresAt },
     trackingJwt,
+    paymentRequired: !!result.payment,
+    checkoutUrl,
     removed: result.availability.removed,
     adjusted: result.availability.adjusted,
   }
@@ -278,6 +341,14 @@ export async function getPublicOrder(orderId: string) {
         assignedWorkerName: schema.users.name,
         assignedAt: schema.orders.assignedAt,
         totalPriceCents: schema.orders.totalPriceCents,
+        paymentStatus: schema.orders.paymentStatus,
+        paymentExpiresAt: schema.orders.paymentExpiresAt,
+        paidAt: schema.orders.paidAt,
+        foodAmountPaidCents: schema.orders.foodAmountPaidCents,
+        checkoutTipCents: schema.orders.checkoutTipCents,
+        postOrderTipCents: schema.orders.postOrderTipCents,
+        foodAmountRefundedCents: schema.orders.foodAmountRefundedCents,
+        tipAmountRefundedCents: schema.orders.tipAmountRefundedCents,
         trackingToken: schema.orders.trackingToken,
         createdAt: schema.orders.createdAt,
         updatedAt: schema.orders.updatedAt,
@@ -298,6 +369,41 @@ export async function getPublicOrder(orderId: string) {
   if (!order) {
     throw new Error('Order not found.')
   }
+
+  const checkoutPayment = (
+    await db
+      .select({
+        id: schema.orderPayments.id,
+        tipAmountCents: schema.orderPayments.tipAmountCents,
+      })
+      .from(schema.orderPayments)
+      .where(
+        and(
+          eq(schema.orderPayments.orderId, orderId),
+          eq(schema.orderPayments.kind, 'ORDER_CHECKOUT'),
+        ),
+      )
+      .limit(1)
+  ).at(0)
+
+  const refundAttempts = checkoutPayment
+    ? await db
+        .select({
+          status: schema.paymentRefunds.status,
+          amountCents: schema.paymentRefunds.amountCents,
+        })
+        .from(schema.paymentRefunds)
+        .where(eq(schema.paymentRefunds.orderPaymentId, checkoutPayment.id))
+    : []
+  const paymentReconciliation = calculatePaymentReconciliation({
+    orderStatus: order.status,
+    totalPriceCents: order.totalPriceCents,
+    foodAmountPaidCents: order.foodAmountPaidCents,
+    checkoutTipCents: order.checkoutTipCents,
+    foodAmountRefundedCents: order.foodAmountRefundedCents,
+    tipAmountRefundedCents: order.tipAmountRefundedCents,
+    refundAttempts,
+  })
 
   const items = await db
     .select({
@@ -336,6 +442,8 @@ export async function getPublicOrder(orderId: string) {
 
   return {
     ...order,
+    ...paymentReconciliation,
+    pendingCheckoutTipCents: checkoutPayment?.tipAmountCents ?? 0,
     items: items.map((item) => ({
       ...item,
       selectedOptions: selectedOptions.filter(
@@ -362,6 +470,11 @@ export async function listActiveSessionOrders() {
       assignedWorkerName: schema.users.name,
       assignedAt: schema.orders.assignedAt,
       totalPriceCents: schema.orders.totalPriceCents,
+      paymentStatus: schema.orders.paymentStatus,
+      foodAmountPaidCents: schema.orders.foodAmountPaidCents,
+      checkoutTipCents: schema.orders.checkoutTipCents,
+      foodAmountRefundedCents: schema.orders.foodAmountRefundedCents,
+      tipAmountRefundedCents: schema.orders.tipAmountRefundedCents,
       createdAt: schema.orders.createdAt,
       updatedAt: schema.orders.updatedAt,
       cancelledAt: schema.orders.cancelledAt,
@@ -369,12 +482,52 @@ export async function listActiveSessionOrders() {
     })
     .from(schema.orders)
     .leftJoin(schema.users, eq(schema.users.id, schema.orders.assignedWorkerId))
-    .where(eq(schema.orders.sessionId, session.id))
+    .where(
+      and(
+        eq(schema.orders.sessionId, session.id),
+        or(
+          eq(schema.orders.paymentStatus, 'NOT_REQUIRED'),
+          eq(schema.orders.paymentStatus, 'PAID'),
+          eq(schema.orders.paymentStatus, 'PARTIALLY_REFUNDED'),
+          eq(schema.orders.paymentStatus, 'REFUNDED'),
+        ),
+      ),
+    )
     .orderBy(schema.orders.createdAt)
 
   if (orders.length === 0) return []
 
   const orderIds = orders.map((o) => o.id)
+  const checkoutPayments = await db
+    .select({
+      id: schema.orderPayments.id,
+      orderId: schema.orderPayments.orderId,
+    })
+    .from(schema.orderPayments)
+    .where(
+      and(
+        inArray(schema.orderPayments.orderId, orderIds),
+        eq(schema.orderPayments.kind, 'ORDER_CHECKOUT'),
+      ),
+    )
+  const paymentByOrderId = new Map(
+    checkoutPayments.map((payment) => [payment.orderId, payment]),
+  )
+  const refundAttempts = checkoutPayments.length
+    ? await db
+        .select({
+          orderPaymentId: schema.paymentRefunds.orderPaymentId,
+          status: schema.paymentRefunds.status,
+          amountCents: schema.paymentRefunds.amountCents,
+        })
+        .from(schema.paymentRefunds)
+        .where(
+          inArray(
+            schema.paymentRefunds.orderPaymentId,
+            checkoutPayments.map((payment) => payment.id),
+          ),
+        )
+    : []
   const items = await db
     .select({
       id: schema.orderItems.id,
@@ -429,6 +582,18 @@ export async function listActiveSessionOrders() {
 
   return orders.map((order) => ({
     ...order,
+    ...calculatePaymentReconciliation({
+      orderStatus: order.status,
+      totalPriceCents: order.totalPriceCents,
+      foodAmountPaidCents: order.foodAmountPaidCents,
+      checkoutTipCents: order.checkoutTipCents,
+      foodAmountRefundedCents: order.foodAmountRefundedCents,
+      tipAmountRefundedCents: order.tipAmountRefundedCents,
+      refundAttempts: refundAttempts.filter(
+        (refund) =>
+          refund.orderPaymentId === paymentByOrderId.get(order.id)?.id,
+      ),
+    }),
     items: itemsByOrder[order.id] ?? [],
   }))
 }
@@ -472,7 +637,7 @@ export async function correctOrder(input: CorrectOrderInput) {
     }
   })
 
-  await db.transaction(async (trx) => {
+  const refundIds = await db.transaction(async (trx) => {
     await trx.execute(
       sql`select ${schema.orders.id} from ${schema.orders} where ${schema.orders.id} = ${input.orderId} for update`,
     )
@@ -624,7 +789,20 @@ export async function correctOrder(input: CorrectOrderInput) {
       before,
       after,
     })
+
+    return queueOrderCorrectionRefund(
+      {
+        orderId: before.id,
+        orderVersion: input.version + 1,
+        newFoodAmountCents: totalPriceCents,
+        reason,
+        requestedByUserId: input.userId,
+      },
+      trx,
+    )
   })
+
+  await processPaymentRefunds(refundIds)
 
   return getPublicOrder(input.orderId)
 }
@@ -642,7 +820,7 @@ export async function cancelOrder(input: {
     throw new Error('A valid order version is required.')
   }
 
-  await db.transaction(async (trx) => {
+  const refundIds = await db.transaction(async (trx) => {
     await trx.execute(
       sql`select ${schema.orders.id} from ${schema.orders} where ${schema.orders.id} = ${input.orderId} for update`,
     )
@@ -700,7 +878,19 @@ export async function cancelOrder(input: {
       before,
       after,
     })
+
+    return queueOrderCancellationRefund(
+      {
+        orderId: before.id,
+        orderVersion: input.version + 1,
+        reason,
+        requestedByUserId: input.userId,
+      },
+      trx,
+    )
   })
+
+  await processPaymentRefunds(refundIds)
 
   return getPublicOrder(input.orderId)
 }

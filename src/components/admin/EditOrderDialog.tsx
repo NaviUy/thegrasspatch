@@ -23,6 +23,8 @@ export type EditableOrder = {
   customerName: string
   version: number
   totalPriceCents: number
+  foodAmountPaidCents: number
+  foodAmountRefundedCents: number
   items: Array<{
     id: string
     menuItemId: string
@@ -274,6 +276,15 @@ export function EditOrderDialog({
       )
     return total + (item.priceCents + adjustments) * line.quantity
   }, 0)
+  const netFoodPaidCents = Math.max(
+    0,
+    (order?.foodAmountPaidCents ?? 0) - (order?.foodAmountRefundedCents ?? 0),
+  )
+  const automaticRefundCents = Math.max(0, netFoodPaidCents - estimatedTotal)
+  const staffReconciliationCents = Math.max(
+    0,
+    estimatedTotal - netFoodPaidCents,
+  )
 
   const submit = async () => {
     if (!order) return
@@ -628,6 +639,19 @@ export function EditOrderDialog({
           <p className="text-sm font-semibold">
             Estimated updated total: {dollars(estimatedTotal)}
           </p>
+          {automaticRefundCents > 0 && (
+            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+              Saving will automatically refund {dollars(automaticRefundCents)}{' '}
+              to the customer's original payment method.
+            </p>
+          )}
+          {staffReconciliationCents > 0 && (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+              Stripe will not automatically charge the additional{' '}
+              {dollars(staffReconciliationCents)}. Staff must reconcile this
+              amount with the customer.
+            </p>
+          )}
           {validationError && (
             <p className="text-sm text-red-600">{validationError}</p>
           )}

@@ -47,6 +47,16 @@ type Order = {
   assignedWorkerId?: string | null
   assignedWorkerName?: string | null
   totalPriceCents: number
+  paymentStatus: 'NOT_REQUIRED' | 'PAID' | 'PARTIALLY_REFUNDED' | 'REFUNDED'
+  foodAmountPaidCents: number
+  checkoutTipCents: number
+  foodAmountRefundedCents: number
+  tipAmountRefundedCents: number
+  totalRefundedCents: number
+  refundableOnCancelCents: number
+  paymentAmountDueCents: number
+  refundOutstandingCents: number
+  refundProgressStatus: 'NONE' | 'PENDING' | 'FAILED'
   createdAt?: string
   cancellationReason?: string | null
   cancelledAt?: string | null
@@ -98,6 +108,7 @@ function OrderCard({
   onUnassign,
   onEdit,
   onCancel,
+  onRetryRefund,
   onViewHistory,
   canDrag = false,
 }: {
@@ -107,6 +118,7 @@ function OrderCard({
   onUnassign?: (orderId: string) => void
   onEdit?: (order: Order) => void
   onCancel?: (order: Order) => void
+  onRetryRefund?: (order: Order) => void
   onViewHistory?: (order: Order) => void
   canDrag?: boolean
 }) {
@@ -200,6 +212,52 @@ function OrderCard({
         ) : null}
       </div>
 
+      <div className="space-y-1 rounded-md bg-slate-50 px-3 py-2 text-xs">
+        <div className="flex items-center justify-between gap-2 text-slate-600">
+          <span>Payment</span>
+          <span className="font-semibold text-slate-800">
+            {order.paymentStatus.replaceAll('_', ' ')}
+          </span>
+        </div>
+        {order.totalRefundedCents > 0 && (
+          <div className="flex items-center justify-between gap-2 text-emerald-700">
+            <span>Refunded</span>
+            <span className="font-semibold">
+              ${formatDollars(order.totalRefundedCents)}
+            </span>
+          </div>
+        )}
+        {order.paymentAmountDueCents > 0 && (
+          <p className="font-semibold text-amber-700">
+            Staff reconciliation: ${formatDollars(order.paymentAmountDueCents)}{' '}
+            was not charged automatically.
+          </p>
+        )}
+        {order.refundProgressStatus === 'PENDING' && (
+          <p className="font-semibold text-amber-700">
+            Refund pending: ${formatDollars(order.refundOutstandingCents)}
+          </p>
+        )}
+        {order.refundProgressStatus === 'FAILED' && (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-red-700">
+            <span className="font-semibold">
+              Refund needs attention: $
+              {formatDollars(order.refundOutstandingCents)}
+            </span>
+            {onRetryRefund && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-red-200 text-red-700"
+                onClick={() => onRetryRefund(order)}
+              >
+                Retry refund
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
       {(onEdit || onCancel || onViewHistory) && (
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
           {onEdit && (
@@ -269,6 +327,7 @@ function RouteComponent() {
     null,
   )
   const [cancelling, setCancelling] = useState(false)
+  const [retryingRefund, setRetryingRefund] = useState<string | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [realtimeGeneration, setRealtimeGeneration] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
@@ -490,6 +549,19 @@ function RouteComponent() {
     }
   }
 
+  const retryRefund = async (order: Order) => {
+    setRetryingRefund(order.id)
+    setError(null)
+    try {
+      const { order: updated } = await api.retryOrderRefund(order.id)
+      upsertOrder(updated as Order)
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to retry the refund.')
+    } finally {
+      setRetryingRefund(null)
+    }
+  }
+
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     const orderId = event.dataTransfer.getData('text/plain')
@@ -693,6 +765,11 @@ function RouteComponent() {
                     onCancel={
                       canCancelOrder(order) ? setCancellingOrder : undefined
                     }
+                    onRetryRefund={
+                      manager && retryingRefund !== order.id
+                        ? retryRefund
+                        : undefined
+                    }
                     onViewHistory={openHistory}
                   />
                 ))}
@@ -748,6 +825,11 @@ function RouteComponent() {
                       onCancel={
                         canCancelOrder(order) ? setCancellingOrder : undefined
                       }
+                      onRetryRefund={
+                        manager && retryingRefund !== order.id
+                          ? retryRefund
+                          : undefined
+                      }
                       onViewHistory={openHistory}
                     />
                   </Reorder.Item>
@@ -797,6 +879,11 @@ function RouteComponent() {
                     canDrag={false}
                     onCancel={
                       canCancelOrder(order) ? setCancellingOrder : undefined
+                    }
+                    onRetryRefund={
+                      manager && retryingRefund !== order.id
+                        ? retryRefund
+                        : undefined
                     }
                     onViewHistory={openHistory}
                   />
@@ -927,7 +1014,7 @@ function RouteComponent() {
             <DialogTitle>Cancel this order?</DialogTitle>
             <DialogDescription>
               {cancellingOrder
-                ? `${formatOrderNumber(cancellingOrder.orderNumber, cancellingOrder.id)} for ${cancellingOrder.customerName} will leave the active queue and its inventory will be restored.`
+                ? `${formatOrderNumber(cancellingOrder.orderNumber, cancellingOrder.id)} for ${cancellingOrder.customerName} will leave the active queue and its inventory will be restored.${cancellingOrder.refundableOnCancelCents > 0 ? ` Stripe will automatically refund $${formatDollars(cancellingOrder.refundableOnCancelCents)}, including any remaining checkout tip.` : ''}`
                 : ''}
             </DialogDescription>
           </DialogHeader>

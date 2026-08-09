@@ -28,6 +28,7 @@ type Analytics = {
     quantity: number
     revenueCents: number
   }>
+  cancellationCount: number
   tips: { status: 'NOT_TRACKED'; totalCents: null }
 }
 
@@ -230,7 +231,13 @@ function RouteComponent() {
               ))}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
+                <p className="text-sm text-slate-500">Cancelled orders</p>
+                <p className="mt-1 text-xl font-semibold text-red-700">
+                  {analytics.cancellationCount}
+                </p>
+              </div>
               <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <p className="text-sm text-slate-500">Completed orders</p>
                 <p className="mt-1 text-xl font-semibold text-emerald-700">

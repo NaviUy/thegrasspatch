@@ -94,10 +94,12 @@ export async function updateMenuItemWithOptions(
 }
 
 export async function deleteMenuItem(id: string) {
-  const [item] = await db
-    .delete(schema.menuItems)
-    .where(eq(schema.menuItems.id, id))
-    .returning()
+  const item = (
+    await db
+      .delete(schema.menuItems)
+      .where(eq(schema.menuItems.id, id))
+      .returning()
+  ).at(0)
 
   if (!item) {
     throw new Error('Menu item not found.')
@@ -107,15 +109,17 @@ export async function deleteMenuItem(id: string) {
 }
 
 export async function getActiveSession() {
-  const [session] = await db
-    .select({
-      id: schema.sessions.id,
-      name: schema.sessions.name,
-      isActive: schema.sessions.isActive,
-    })
-    .from(schema.sessions)
-    .where(eq(schema.sessions.isActive, true))
-    .limit(1)
+  const session = (
+    await db
+      .select({
+        id: schema.sessions.id,
+        name: schema.sessions.name,
+        isActive: schema.sessions.isActive,
+      })
+      .from(schema.sessions)
+      .where(eq(schema.sessions.isActive, true))
+      .limit(1)
+  ).at(0)
 
   if (!session) {
     throw new Error('Active session not found.')
@@ -129,11 +133,13 @@ export async function reorderMenuItems(ids: Array<string>) {
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i]
     const position = i + 1
-    const [item] = await db
-      .update(schema.menuItems)
-      .set({ position })
-      .where(eq(schema.menuItems.id, id))
-      .returning()
+    const item = (
+      await db
+        .update(schema.menuItems)
+        .set({ position })
+        .where(eq(schema.menuItems.id, id))
+        .returning()
+    ).at(0)
     if (item) updates.push(item)
   }
   return updates
@@ -173,7 +179,17 @@ type RefreshCartItemInput = {
 
 export async function refreshCartItems(
   items: Array<RefreshCartItemInput>,
-  options: { sessionId?: string; client?: any } = {},
+  options: {
+    sessionId?: string
+    client?: any
+    excludeOrderId?: string
+    preservedLines?: Array<{
+      lineId: string
+      menuItemId: string
+      quantity: number
+      selectedOptionChoiceIds: Array<string>
+    }>
+  } = {},
 ): Promise<{
   active: Array<{
     menuItemId: string
@@ -217,11 +233,20 @@ export async function refreshCartItems(
   const inventory = await listSessionInventory(sessionId, {
     includeInactive: true,
     client: options.client,
+    excludeOrderId: options.excludeOrderId,
   })
   const dbItemsMap = new Map(inventory.map((item) => [item.menuItemId, item]))
   const optionGroupsByItem = await getOptionsForMenuItems(
     inventory.map((item) => item.menuItemId),
-    { sessionId, client: options.client },
+    {
+      sessionId,
+      client: options.client,
+      excludeOrderId: options.excludeOrderId,
+      includeInactive: !!options.preservedLines,
+    },
+  )
+  const preservedByLine = new Map(
+    (options.preservedLines ?? []).map((line) => [line.lineId, line]),
   )
   const remainingByItem = new Map(
     inventory.map((item) => [item.menuItemId, item.remainingQuantity]),
@@ -265,6 +290,10 @@ export async function refreshCartItems(
 
   for (const item of items) {
     const dbItem = dbItemsMap.get(item.menuItemId)
+    const preserved = preservedByLine.get(item.cartLineId)
+    const canKeepBaseReservation =
+      preserved?.menuItemId === item.menuItemId &&
+      item.quantity <= preserved.quantity
     if (!dbItem) {
       removed.push({
         menuItemId: item.menuItemId,
@@ -275,7 +304,7 @@ export async function refreshCartItems(
       continue
     }
 
-    if (!dbItem.isActive) {
+    if (!dbItem.isActive && !canKeepBaseReservation) {
       removed.push({
         menuItemId: item.menuItemId,
         cartLineId: item.cartLineId,
@@ -285,7 +314,7 @@ export async function refreshCartItems(
       continue
     }
 
-    if (dbItem.isSoldOut) {
+    if (dbItem.isSoldOut && !canKeepBaseReservation) {
       removed.push({
         menuItemId: item.menuItemId,
         cartLineId: item.cartLineId,
@@ -303,9 +332,14 @@ export async function refreshCartItems(
     )
     const invalidChoice = selectedIds.some((id) => {
       const choice: any = choiceMap.get(id)
-      return !choice || choice.isSoldOut
+      const canKeepChoice =
+        canKeepBaseReservation && preserved.selectedOptionChoiceIds.includes(id)
+      return (
+        !choice || ((!choice.isActive || choice.isSoldOut) && !canKeepChoice)
+      )
     })
     const invalidGroup = groups.some((group: any) => {
+      if (!group.isActive) return false
       const count = group.choices.filter((choice: any) =>
         selectedIds.includes(choice.id),
       ).length
@@ -340,13 +374,26 @@ export async function refreshCartItems(
         priceAdjustmentCents: choice.priceAdjustmentCents,
       }
     })
-    let quantity = getAvailableCartQuantity(item.quantity, {
-      ...dbItem,
-      remainingQuantity: remainingByItem.get(item.menuItemId) ?? null,
-    })
+    const baseRemaining = remainingByItem.get(item.menuItemId) ?? null
+    let quantity = canKeepBaseReservation
+      ? baseRemaining === null
+        ? item.quantity
+        : Math.min(item.quantity, Math.max(baseRemaining, preserved.quantity))
+      : getAvailableCartQuantity(item.quantity, {
+          ...dbItem,
+          remainingQuantity: baseRemaining,
+        })
     for (const selected of selectedOptions) {
       const remaining = remainingByChoice.get(selected.optionChoiceId) ?? null
-      if (remaining !== null) quantity = Math.min(quantity, remaining)
+      if (remaining !== null) {
+        const canKeepChoice =
+          canKeepBaseReservation &&
+          preserved.selectedOptionChoiceIds.includes(selected.optionChoiceId)
+        quantity = Math.min(
+          quantity,
+          canKeepChoice ? Math.max(remaining, preserved.quantity) : remaining,
+        )
+      }
     }
     if (quantity <= 0) {
       removed.push({
@@ -389,9 +436,9 @@ export async function refreshCartItems(
         .slice(0, 200),
       selectedOptions,
     })
-    const baseRemaining = remainingByItem.get(item.menuItemId)
-    if (baseRemaining !== null && baseRemaining !== undefined) {
-      remainingByItem.set(item.menuItemId, baseRemaining - quantity)
+    const updatedBaseRemaining = remainingByItem.get(item.menuItemId)
+    if (updatedBaseRemaining !== null && updatedBaseRemaining !== undefined) {
+      remainingByItem.set(item.menuItemId, updatedBaseRemaining - quantity)
     }
     for (const selected of selectedOptions) {
       const remaining = remainingByChoice.get(selected.optionChoiceId)

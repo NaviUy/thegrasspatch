@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, ne, notInArray, sql } from 'drizzle-orm'
 import type { OptionGroupInput } from '@/lib/itemOptions'
 import { db, schema } from '@/db/client'
 import { getInventoryAvailability } from '@/lib/inventory'
@@ -31,6 +31,7 @@ async function soldQuantitiesByChoice(
   sessionId: string,
   choiceIds: Array<string>,
   client: DatabaseClient = db,
+  excludeOrderId?: string,
 ) {
   if (!choiceIds.length) return new Map<string, number>()
   const rows = await client
@@ -47,6 +48,8 @@ async function soldQuantitiesByChoice(
     .where(
       and(
         eq(schema.orders.sessionId, sessionId),
+        ne(schema.orders.status, 'CANCELLED'),
+        excludeOrderId ? ne(schema.orders.id, excludeOrderId) : undefined,
         inArray(schema.orderItemOptions.optionChoiceId, choiceIds),
       ),
     )
@@ -62,6 +65,7 @@ export async function getOptionsForMenuItems(
     sessionId?: string
     includeInactive?: boolean
     client?: DatabaseClient
+    excludeOrderId?: string
   } = {},
 ) {
   if (!menuItemIds.length) return new Map<string, Array<any>>()
@@ -119,6 +123,7 @@ export async function getOptionsForMenuItems(
       options.sessionId,
       choices.map((choice: any) => choice.id),
       client,
+      options.excludeOrderId,
     )
   }
 

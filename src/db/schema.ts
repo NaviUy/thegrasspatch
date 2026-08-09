@@ -204,6 +204,8 @@ export const orders = pgTable(
 
     status: varchar('status', { length: 20 }).notNull().default('PENDING'),
 
+    version: integer('version').notNull().default(1),
+
     assignedWorkerId: uuid('assigned_worker_id').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -221,6 +223,11 @@ export const orders = pgTable(
       .defaultNow()
       .notNull(),
     fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    cancelledByUserId: uuid('cancelled_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    cancellationReason: varchar('cancellation_reason', { length: 250 }),
     estimatedWaitMinMinutes: integer('estimated_wait_min_minutes'),
     estimatedWaitMaxMinutes: integer('estimated_wait_max_minutes'),
     waitEstimateSource: varchar('wait_estimate_source', { length: 20 }),
@@ -232,6 +239,14 @@ export const orders = pgTable(
     orderNumberPositive: check(
       'orders_order_number_positive',
       sql`${table.orderNumber} >= 1`,
+    ),
+    versionPositive: check(
+      'orders_version_positive',
+      sql`${table.version} >= 1`,
+    ),
+    statusValid: check(
+      'orders_status_valid',
+      sql`${table.status} in ('PENDING', 'MAKING', 'READY', 'CANCELLED')`,
     ),
     estimatedWaitRangeValid: check(
       'orders_estimated_wait_range_valid',
@@ -280,6 +295,24 @@ export const orderItemOptions = pgTable('order_item_options', {
   groupName: varchar('group_name', { length: 100 }).notNull(),
   choiceName: varchar('choice_name', { length: 100 }).notNull(),
   priceAdjustmentCents: integer('price_adjustment_cents').notNull().default(0),
+})
+
+/** Immutable history for staff-visible order changes. */
+export const orderEvents = pgTable('order_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orderId: uuid('order_id')
+    .notNull()
+    .references(() => orders.id, { onDelete: 'cascade' }),
+  actorUserId: uuid('actor_user_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
+  type: varchar('type', { length: 40 }).notNull(),
+  reason: varchar('reason', { length: 250 }),
+  before: jsonb('before').$type<Record<string, unknown> | null>(),
+  after: jsonb('after').$type<Record<string, unknown> | null>(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 })
 
 /** Optional: SMS log for Twilio later */

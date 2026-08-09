@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, or } from 'drizzle-orm'
 import type { WaitEstimateMode } from '@/lib/waitEstimate'
 import { db, schema } from '@/db/client'
 import { calculateWaitEstimate } from '@/lib/waitEstimate'
@@ -65,6 +65,12 @@ export async function getSessionWaitEstimate(
       and(
         eq(schema.orders.sessionId, sessionId),
         inArray(schema.orders.status, ['PENDING', 'MAKING']),
+        or(
+          eq(schema.orders.paymentStatus, 'NOT_REQUIRED'),
+          eq(schema.orders.paymentStatus, 'PAID'),
+          eq(schema.orders.paymentStatus, 'PARTIALLY_REFUNDED'),
+          eq(schema.orders.paymentStatus, 'REFUNDED'),
+        ),
       ),
     )
   const estimate = calculateWaitEstimate({

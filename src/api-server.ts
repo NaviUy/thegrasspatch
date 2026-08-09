@@ -32,6 +32,7 @@ import {
   assignOrderToUser,
   cancelOrder,
   correctOrder,
+  getPublicOrder,
   listActiveSessionOrders,
   listOrderEvents,
   unassignOrder,
@@ -49,6 +50,7 @@ import {
   updateSessionWaitSettings,
 } from './api/waitEstimate'
 import { getSessionAnalytics, getSessionAnalyticsCsv } from './api/analytics'
+import { retryOrderRefunds, stripeWebhookHandler } from './api/payments'
 
 const MENU_IMAGE_BUCKET = process.env.SUPABASE_MENU_BUCKET || 'menu-images'
 const upload = multer({
@@ -60,6 +62,13 @@ const app = express()
 const PORT = process.env.PORT ?? 4000
 
 app.use(cors())
+// Stripe signature verification requires the exact raw request body. This
+// route must stay before the global JSON parser.
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  stripeWebhookHandler,
+)
 app.use(express.json())
 app.use('/api/public', publicRouter)
 
@@ -751,6 +760,27 @@ app.post('/api/orders/:id/cancel', requireAuth, async (req, res) => {
     const message = error?.message ?? 'Failed to cancel order.'
     const status = error instanceof OrderConflictError ? 409 : 400
     res.status(status).json({ error: message })
+  }
+})
+
+app.post('/api/orders/:id/refunds/retry', requireAuth, async (req, res) => {
+  if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+    return res
+      .status(403)
+      .json({ error: 'Only owners and admins can retry refunds.' })
+  }
+  try {
+    await retryOrderRefunds({
+      orderId: req.params.id,
+      requestedByUserId: req.user.id,
+    })
+    const order = await getPublicOrder(req.params.id)
+    return res.json({ order })
+  } catch (error: any) {
+    console.error('Retry order refund error: ', error)
+    return res
+      .status(400)
+      .json({ error: error?.message ?? 'Failed to retry the refund.' })
   }
 })
 

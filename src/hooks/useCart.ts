@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react'
 
 const CART_STORAGE_KEY = 'tgp_cart_v2'
 
+export function clearStoredCart() {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(CART_STORAGE_KEY, '[]')
+  } catch {}
+}
+
 export type CartOption = {
   optionGroupId: string
   optionChoiceId: string

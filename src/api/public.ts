@@ -10,8 +10,10 @@ import {
   createPublicOrder,
   getPublicOrder,
 } from './order'
-import { SmsConsentValidationError, prepareSmsConsent } from '@/lib/smsConsent'
+import { cancelPendingCheckout, getPendingCheckoutSession } from './payments'
 import { getSessionWaitEstimate } from './waitEstimate'
+import { SmsConsentValidationError, prepareSmsConsent } from '@/lib/smsConsent'
+import { CheckoutTipValidationError } from '@/lib/checkoutTip'
 
 export const publicRouter = express.Router()
 
@@ -101,7 +103,14 @@ publicRouter.post('/cart/refresh', async (req, res) => {
 
 // POST /api/public/orders
 publicRouter.post('/orders', async (req, res) => {
-  const { customerName, customerPhone, smsOptIn, items } = req.body ?? {}
+  const {
+    customerName,
+    customerPhone,
+    smsOptIn,
+    tipSelection,
+    customTipCents,
+    items,
+  } = req.body ?? {}
 
   if (!customerName || typeof customerName !== 'string') {
     return res.status(400).json({ error: 'Customer name is required.' })
@@ -163,13 +172,16 @@ publicRouter.post('/orders', async (req, res) => {
   }
 
   try {
-    const { order, removed, adjusted, trackingJwt } = await createPublicOrder({
+    const result = await createPublicOrder({
       customerName: customerName.trim(),
       ...smsConsent,
+      tipSelection: typeof tipSelection === 'string' ? tipSelection : null,
+      customTipCents:
+        typeof customTipCents === 'number' ? customTipCents : null,
       items: normalizedItems,
     })
 
-    return res.status(201).json({ order, removed, adjusted, trackingJwt })
+    return res.status(201).json(result)
   } catch (error: any) {
     if (error instanceof OrderAvailabilityError) {
       return res.status(409).json({
@@ -178,8 +190,35 @@ publicRouter.post('/orders', async (req, res) => {
         ...error.availability,
       })
     }
+    if (error instanceof CheckoutTipValidationError) {
+      return res.status(400).json({ error: error.message })
+    }
     console.error('Create public order error: ', error)
     return res.status(500).json({ error: 'Failed to create order.' })
+  }
+})
+
+// POST /api/public/orders/:id/payment/resume
+publicRouter.post('/orders/:id/payment/resume', async (req, res) => {
+  try {
+    const payment = await getPendingCheckoutSession(req.params.id)
+    return res.json(payment)
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to resume payment.'
+    const status = message.includes('not found') ? 404 : 400
+    return res.status(status).json({ error: message })
+  }
+})
+
+// POST /api/public/orders/:id/payment/cancel
+publicRouter.post('/orders/:id/payment/cancel', async (req, res) => {
+  try {
+    const payment = await cancelPendingCheckout(req.params.id)
+    return res.json(payment)
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to cancel payment.'
+    const status = message.includes('not found') ? 404 : 400
+    return res.status(status).json({ error: message })
   }
 })
 

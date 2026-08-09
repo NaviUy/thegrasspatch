@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import type { FormEvent } from 'react'
 import type { CartItem } from '@/hooks/useCart'
+import type { CheckoutTipSelection } from '@/lib/checkoutTip'
 import { Button } from '@/components/ui/button'
 import { makeCartConfigurationKey, useCart } from '@/hooks/useCart'
 import { api } from '@/lib/apiClient'
@@ -50,6 +51,15 @@ export const Route = createFileRoute('/checkout/')({
 
 function formatDollars(cents: number) {
   return (cents / 100).toFixed(2)
+}
+
+function customTipInputToCents(value: string) {
+  const normalized = value.trim()
+  if (!/^\d+(\.\d{0,2})?$/.test(normalized)) return null
+  const cents = Math.round(Number(normalized) * 100)
+  return Number.isSafeInteger(cents) && cents >= 0 && cents <= 50_000
+    ? cents
+    : null
 }
 
 function removalReasonCopy(reason: RemovedCartItem['reason']) {
@@ -100,6 +110,8 @@ function RouteComponent() {
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [smsOptIn, setSmsOptIn] = useState(false)
+  const [tipSelection, setTipSelection] = useState<CheckoutTipSelection>('NONE')
+  const [customTipDollars, setCustomTipDollars] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const isDemoMode =
     typeof window !== 'undefined' &&
@@ -117,8 +129,12 @@ function RouteComponent() {
   }
 
   const refreshCart = useCallback(
-    async (cartItems: Array<CartItem>) => {
-      setRefreshing(true)
+    async (
+      cartItems: Array<CartItem>,
+      options: { showLoading?: boolean } = {},
+    ) => {
+      const showLoading = options.showLoading ?? true
+      if (showLoading) setRefreshing(true)
       setError(null)
 
       try {
@@ -152,7 +168,7 @@ function RouteComponent() {
         setError(err.message ?? 'Failed to refresh cart.')
         return null
       } finally {
-        setRefreshing(false)
+        if (showLoading) setRefreshing(false)
       }
     },
     [setItems],
@@ -239,13 +255,49 @@ function RouteComponent() {
 
   const showEmptyState = !refreshing && totalItems === 0
   const trimmedPhone = customerPhone.trim()
+  const customTipCents = customTipInputToCents(customTipDollars)
+  const selectedTipCents =
+    totalCents === 0 || tipSelection === 'NONE'
+      ? 0
+      : tipSelection === 'PERCENT_15'
+        ? Math.round(totalCents * 0.15)
+        : tipSelection === 'PERCENT_20'
+          ? Math.round(totalCents * 0.2)
+          : tipSelection === 'PERCENT_25'
+            ? Math.round(totalCents * 0.25)
+            : (customTipCents ?? 0)
+  const customTipInvalid =
+    totalCents > 0 && tipSelection === 'CUSTOM' && customTipCents === null
+  const tipOptions: Array<{
+    value: CheckoutTipSelection
+    label: string
+    amountCents: number
+  }> = [
+    { value: 'NONE', label: 'No tip', amountCents: 0 },
+    {
+      value: 'PERCENT_15',
+      label: '15%',
+      amountCents: Math.round(totalCents * 0.15),
+    },
+    {
+      value: 'PERCENT_20',
+      label: '20%',
+      amountCents: Math.round(totalCents * 0.2),
+    },
+    {
+      value: 'PERCENT_25',
+      label: '25%',
+      amountCents: Math.round(totalCents * 0.25),
+    },
+    { value: 'CUSTOM', label: 'Custom', amountCents: customTipCents ?? 0 },
+  ]
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitting(true)
     setError(null)
 
-    const refreshResult = await refreshCart(items)
+    const refreshResult = await refreshCart(items, { showLoading: false })
     if (!refreshResult || refreshResult.active.length === 0) {
       setSubmitting(false)
       setError(
@@ -279,6 +331,8 @@ function RouteComponent() {
         customerName: customerName.trim(),
         customerPhone: trimmedPhone || null,
         smsOptIn,
+        tipSelection: totalCents > 0 ? tipSelection : 'NONE',
+        customTipCents: tipSelection === 'CUSTOM' ? customTipCents : undefined,
         items: refreshResult.active.map((item) => ({
           cartLineId: item.cartLineId,
           menuItemId: item.menuItemId,
@@ -296,12 +350,22 @@ function RouteComponent() {
         throw new Error('Order was created but no ID was returned.')
       }
 
+      if (response.paymentRequired) {
+        if (!response.checkoutUrl) {
+          throw new Error('Payment is required, but checkout is unavailable.')
+        }
+        window.location.assign(response.checkoutUrl)
+        return
+      }
+
       setItems([])
       setRemovedItems([])
       setAdjustedItems([])
       setCustomerName('')
       setCustomerPhone('')
       setSmsOptIn(false)
+      setTipSelection('NONE')
+      setCustomTipDollars('')
 
       await router.navigate({
         to: '/order/$orderId',
@@ -581,6 +645,100 @@ function RouteComponent() {
                       .
                     </label>
                   </div>
+                  {totalCents > 0 ? (
+                    <fieldset className="space-y-3 border-t border-slate-100 pt-4">
+                      <legend className="text-sm font-medium text-slate-900">
+                        Add a tip (optional)
+                      </legend>
+                      <p className="text-xs text-slate-500">
+                        Tips go directly toward supporting the team.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {tipOptions.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            aria-pressed={tipSelection === option.value}
+                            onClick={() => setTipSelection(option.value)}
+                            disabled={submitting}
+                            className={`rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-50 ${
+                              tipSelection === option.value
+                                ? 'border-emerald-600 bg-emerald-50 text-emerald-900'
+                                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="block text-sm font-semibold">
+                              {option.label}
+                            </span>
+                            {option.value !== 'CUSTOM' && (
+                              <span className="block text-xs opacity-75">
+                                ${formatDollars(option.amountCents)}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                      {tipSelection === 'CUSTOM' && (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="customTip">Custom tip</Label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                              $
+                            </span>
+                            <Input
+                              id="customTip"
+                              name="customTip"
+                              type="number"
+                              min="0"
+                              max="500"
+                              step="0.01"
+                              inputMode="decimal"
+                              className="pl-7"
+                              placeholder="0.00"
+                              value={customTipDollars}
+                              onChange={(event) =>
+                                setCustomTipDollars(event.target.value)
+                              }
+                              aria-invalid={customTipInvalid}
+                              disabled={submitting}
+                            />
+                          </div>
+                          {customTipInvalid && (
+                            <p className="text-xs text-red-600">
+                              Enter a tip between $0 and $500 with no more than
+                              two decimal places.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <div className="space-y-1 border-t border-slate-100 pt-3 text-sm">
+                        <div className="flex justify-between text-slate-600">
+                          <span>Food</span>
+                          <span>${formatDollars(totalCents)}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600">
+                          <span>Tip</span>
+                          <span>${formatDollars(selectedTipCents)}</span>
+                        </div>
+                        <div className="flex justify-between font-semibold text-slate-900">
+                          <span>Total due</span>
+                          <span>
+                            ${formatDollars(totalCents + selectedTipCents)}
+                          </span>
+                        </div>
+                      </div>
+                    </fieldset>
+                  ) : (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
+                      <p className="text-sm font-semibold text-emerald-900">
+                        No payment is due for this prepaid order.
+                      </p>
+                      <p className="mt-1 text-xs text-emerald-800">
+                        You can leave an optional tip after the order is
+                        confirmed.
+                      </p>
+                    </div>
+                  )}
                   <div className="flex flex-col items-center justify-between gap-2">
                     <div className="text-sm text-slate-600">
                       {trimmedPhone && !smsOptIn
@@ -599,11 +757,24 @@ function RouteComponent() {
                         totalItems === 0 ||
                         !customerName.trim() ||
                         (Boolean(trimmedPhone) && !smsOptIn) ||
-                        (smsOptIn && !trimmedPhone)
+                        (smsOptIn && !trimmedPhone) ||
+                        customTipInvalid
                       }
                     >
-                      {submitting ? 'Placing order…' : 'Place order'}
+                      {submitting
+                        ? totalCents > 0
+                          ? 'Opening secure payment…'
+                          : 'Placing order…'
+                        : totalCents > 0
+                          ? 'Continue to secure payment'
+                          : 'Place order'}
                     </Button>
+                    {totalCents > 0 && (
+                      <p className="text-center text-xs text-slate-500">
+                        You’ll complete payment securely on Stripe. Your items
+                        are reserved for 30 minutes.
+                      </p>
+                    )}
                   </div>
                 </form>
               </div>

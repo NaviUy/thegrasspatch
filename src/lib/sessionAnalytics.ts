@@ -109,8 +109,8 @@ export type SessionAnalyticsCsvRow = {
   lineTotal: string
   orderTotal: string
   preparationMinutes: string
-  tipAmount: null
-  tipStatus: 'Not tracked'
+  tipAmount: string | null
+  tipStatus: 'Tracked' | 'Not tracked'
 }
 
 export function createSessionAnalyticsCsv(rows: Array<SessionAnalyticsCsvRow>) {

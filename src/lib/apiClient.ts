@@ -215,6 +215,13 @@ export const api = {
     customerName: string
     customerPhone?: string | null
     smsOptIn: boolean
+    tipSelection?:
+      | 'NONE'
+      | 'PERCENT_15'
+      | 'PERCENT_20'
+      | 'PERCENT_25'
+      | 'CUSTOM'
+    customTipCents?: number | null
     items: Array<{
       cartLineId: string
       menuItemId: string
@@ -229,10 +236,23 @@ export const api = {
       removed: Array<any>
       adjusted: Array<any>
       trackingJwt: string
+      paymentRequired: boolean
+      checkoutUrl: string | null
     }>('/api/public/orders', {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  resumePublicOrderPayment: (id: string) =>
+    request<{
+      paymentStatus: string
+      checkoutUrl: string | null
+      expiresAt: string | null
+    }>(`/api/public/orders/${id}/payment/resume`, { method: 'POST' }),
+  cancelPublicOrderPayment: (id: string) =>
+    request<{ paymentStatus: string }>(
+      `/api/public/orders/${id}/payment/cancel`,
+      { method: 'POST' },
+    ),
   getPublicOrder: (id: string) =>
     request<{ order: any; trackingJwt: string }>(`/api/public/orders/${id}`),
   listActiveOrders: (
@@ -277,6 +297,10 @@ export const api = {
     request<{ order: any }>(`/api/orders/${orderId}/cancel`, {
       method: 'POST',
       body: JSON.stringify({ version, reason }),
+    }),
+  retryOrderRefund: (orderId: string) =>
+    request<{ order: any }>(`/api/orders/${orderId}/refunds/retry`, {
+      method: 'POST',
     }),
   listOrderEvents: (orderId: string) =>
     request<{ events: Array<any> }>(`/api/orders/${orderId}/events`),

@@ -2,11 +2,14 @@ import { and, eq } from 'drizzle-orm'
 import { db, schema } from '@/db/client'
 import {
   HELP_SMS_MESSAGE,
-  ORDER_READY_SMS_MESSAGE,
+  buildOrderCancelledSmsMessage,
+  buildOrderCreatedSmsMessage,
+  buildOrderReadySmsMessage,
   getTelnyxSendingConfig,
   normalizeTelnyxMessageStatus,
   sendTelnyxSms,
 } from '@/lib/telnyx'
+import { getAppBaseUrl } from '@/lib/stripe'
 
 type SmsSendOutcome =
   | { outcome: 'sent'; providerMessageId: string }
@@ -43,8 +46,12 @@ async function markEventFailed(eventId: string, error: unknown) {
     .where(eq(schema.smsEvents.id, eventId))
 }
 
-export async function sendOrderReadyNotification(
+type OrderSmsType = 'ORDER_CREATED' | 'ORDER_READY' | 'ORDER_CANCELLED'
+
+async function sendOrderNotification(
   orderId: string,
+  type: OrderSmsType,
+  buildMessage: (order: { id: string; orderNumber: number }) => string,
 ): Promise<SmsSendOutcome> {
   let config
   try {
@@ -60,6 +67,7 @@ export async function sendOrderReadyNotification(
   const matchingOrders = await db
     .select({
       id: schema.orders.id,
+      orderNumber: schema.orders.orderNumber,
       customerPhone: schema.orders.customerPhone,
       smsOptedInAt: schema.orders.smsOptedInAt,
       smsConsentVersion: schema.orders.smsConsentVersion,
@@ -77,13 +85,20 @@ export async function sendOrderReadyNotification(
     return { outcome: 'skipped', reason: 'Order does not have SMS consent.' }
   }
 
+  let message
+  try {
+    message = buildMessage(order)
+  } catch (error) {
+    return { outcome: 'failed', reason: errorMessage(error) }
+  }
+
   const insertedEvents = await db
     .insert(schema.smsEvents)
     .values({
       orderId: order.id,
       phone: order.customerPhone,
-      type: 'ORDER_READY',
-      message: ORDER_READY_SMS_MESSAGE,
+      type,
+      message,
       status: 'SENDING',
     })
     .onConflictDoNothing({
@@ -103,7 +118,7 @@ export async function sendOrderReadyNotification(
       .where(
         and(
           eq(schema.smsEvents.orderId, order.id),
-          eq(schema.smsEvents.type, 'ORDER_READY'),
+          eq(schema.smsEvents.type, type),
           eq(schema.smsEvents.status, 'FAILED'),
         ),
       )
@@ -112,12 +127,12 @@ export async function sendOrderReadyNotification(
   }
 
   if (!event) {
-    return { outcome: 'skipped', reason: 'Order-ready SMS already processed.' }
+    return { outcome: 'skipped', reason: `${type} SMS already processed.` }
   }
 
   try {
     const result = await sendTelnyxSms(
-      { to: order.customerPhone, text: ORDER_READY_SMS_MESSAGE },
+      { to: order.customerPhone, text: message },
       config,
     )
     await updateEventAfterSend(event.id, result)
@@ -126,6 +141,31 @@ export async function sendOrderReadyNotification(
     await markEventFailed(event.id, error)
     return { outcome: 'failed', reason: errorMessage(error) }
   }
+}
+
+export function sendOrderCreatedNotification(orderId: string) {
+  return sendOrderNotification(orderId, 'ORDER_CREATED', (order) => {
+    const trackingUrl = new URL(
+      `/order/${order.id}`,
+      `${getAppBaseUrl()}/`,
+    ).toString()
+    return buildOrderCreatedSmsMessage({
+      orderNumber: order.orderNumber,
+      trackingUrl,
+    })
+  })
+}
+
+export function sendOrderReadyNotification(orderId: string) {
+  return sendOrderNotification(orderId, 'ORDER_READY', (order) =>
+    buildOrderReadySmsMessage(order.orderNumber),
+  )
+}
+
+export function sendOrderCancellationNotification(orderId: string) {
+  return sendOrderNotification(orderId, 'ORDER_CANCELLED', (order) =>
+    buildOrderCancelledSmsMessage(order.orderNumber),
+  )
 }
 
 export async function respondToHelpKeyword(input: {

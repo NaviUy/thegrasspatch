@@ -1,4 +1,5 @@
 import { and, eq, inArray, or, sql } from 'drizzle-orm'
+import { sendOrderCreatedNotification } from './sms'
 import type { Request, Response } from 'express'
 import type Stripe from 'stripe'
 import { db, schema } from '@/db/client'
@@ -188,15 +189,16 @@ export async function processCompletedCheckoutSession(
 ) {
   if (session.payment_status !== 'paid') return
 
-  await db.transaction(async (trx) => {
+  const orderId = await db.transaction(async (trx) => {
     const payment = await findCheckoutPayment(session, trx)
-    if (!payment || payment.kind !== 'ORDER_CHECKOUT') return
+    if (!payment || payment.kind !== 'ORDER_CHECKOUT') return null
 
     await trx.execute(
       sql`select ${schema.orderPayments.id} from ${schema.orderPayments} where ${schema.orderPayments.id} = ${payment.id} for update`,
     )
     const lockedPayment = await findCheckoutPayment(session, trx)
-    if (!lockedPayment || lockedPayment.status === 'SUCCEEDED') return
+    if (!lockedPayment) return null
+    if (lockedPayment.status === 'SUCCEEDED') return lockedPayment.orderId
 
     if (
       session.amount_total !== lockedPayment.amountCents ||
@@ -228,7 +230,20 @@ export async function processCompletedCheckoutSession(
         updatedAt: succeededAt,
       })
       .where(eq(schema.orders.id, lockedPayment.orderId))
+
+    return lockedPayment.orderId
   })
+
+  if (!orderId) return
+
+  try {
+    const smsResult = await sendOrderCreatedNotification(orderId)
+    if (smsResult.outcome === 'failed') {
+      console.error('Order-created SMS failed:', smsResult.reason)
+    }
+  } catch (error) {
+    console.error('Order-created SMS failed:', error)
+  }
 }
 
 async function closePendingCheckout(

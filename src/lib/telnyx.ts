@@ -1,8 +1,22 @@
 import Telnyx from 'telnyx'
 import { TelnyxWebhook } from 'telnyx/lib/webhooks'
 
-export const ORDER_READY_SMS_MESSAGE =
-  'The Grass Patch: Your order is ready for pickup. Reply STOP to opt out, HELP for help.'
+const SMS_COMPLIANCE_FOOTER = 'Reply STOP to opt out, HELP for help.'
+
+export function buildOrderCreatedSmsMessage(input: {
+  orderNumber: number
+  trackingUrl: string
+}) {
+  return `The Grass Patch: Order #${input.orderNumber} confirmed. Track: ${input.trackingUrl} ${SMS_COMPLIANCE_FOOTER}`
+}
+
+export function buildOrderReadySmsMessage(orderNumber: number) {
+  return `The Grass Patch: Order #${orderNumber} is ready for pickup. ${SMS_COMPLIANCE_FOOTER}`
+}
+
+export function buildOrderCancelledSmsMessage(orderNumber: number) {
+  return `The Grass Patch: Order #${orderNumber} has been cancelled. Questions? Email hello@thegrasspatch.cafe. ${SMS_COMPLIANCE_FOOTER}`
+}
 
 export const HELP_SMS_MESSAGE =
   'The Grass Patch order updates: Help at hello@thegrasspatch.cafe. Msg & data rates may apply. Reply STOP to opt out.'

@@ -1,5 +1,8 @@
 import { generateKeyPairSync, sign } from 'node:crypto'
 import {
+  buildOrderCancelledSmsMessage,
+  buildOrderCreatedSmsMessage,
+  buildOrderReadySmsMessage,
   getTelnyxSendingConfig,
   normalizeSmsKeyword,
   normalizeTelnyxMessageStatus,
@@ -40,6 +43,23 @@ describe('getTelnyxSendingConfig', () => {
 })
 
 describe('Telnyx message helpers', () => {
+  it('builds transactional order messages with the short order number', () => {
+    expect(
+      buildOrderCreatedSmsMessage({
+        orderNumber: 27,
+        trackingUrl: 'https://thegrasspatch.cafe/order/order-id',
+      }),
+    ).toBe(
+      'The Grass Patch: Order #27 confirmed. Track: https://thegrasspatch.cafe/order/order-id Reply STOP to opt out, HELP for help.',
+    )
+    expect(buildOrderReadySmsMessage(27)).toBe(
+      'The Grass Patch: Order #27 is ready for pickup. Reply STOP to opt out, HELP for help.',
+    )
+    expect(buildOrderCancelledSmsMessage(27)).toBe(
+      'The Grass Patch: Order #27 has been cancelled. Questions? Email hello@thegrasspatch.cafe. Reply STOP to opt out, HELP for help.',
+    )
+  })
+
   it('normalizes provider statuses for storage', () => {
     expect(normalizeTelnyxMessageStatus('delivery_failed')).toBe(
       'DELIVERY_FAILED',

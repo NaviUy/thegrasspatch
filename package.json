@@ -14,7 +14,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "api:dev": "tsx watch src/api-server.ts",
-    "dev:all": "concurrently \"npm run dev\" \"npm run api:dev\"",
+    "dev:all": "node scripts/dev-all.mjs",
     "api:build:lambda": "esbuild src/lambda-handler.ts --bundle --platform=node --target=node20 --outfile=dist/lambda.js",
     "dev:spa": "vite --config vite.spa.config.ts",
     "build:spa": "vite build --config vite.spa.config.ts"

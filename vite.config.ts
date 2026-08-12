@@ -8,7 +8,7 @@ import { nitro } from 'nitro/vite'
 
 const config = defineConfig({
   server: {
-    allowedHosts: ['c5bf-47-232-145-113.ngrok-free.app'],
+    allowedHosts: ['.ngrok-free.app'],
   },
   plugins: [
     devtools(),

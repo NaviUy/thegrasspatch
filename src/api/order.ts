@@ -11,7 +11,11 @@ import {
   queueOrderCancellationRefund,
   queueOrderCorrectionRefund,
 } from './payments'
-import { sendOrderReadyNotification } from './sms'
+import {
+  sendOrderCancellationNotification,
+  sendOrderCreatedNotification,
+  sendOrderReadyNotification,
+} from './sms'
 import { db, schema } from '@/db/client'
 import { calculateCheckoutTipCents } from '@/lib/checkoutTip'
 import { calculatePaymentReconciliation } from '@/lib/paymentReconciliation'
@@ -314,6 +318,15 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
     } catch (error) {
       await markCheckoutSetupFailed(result.order.id, result.payment.id)
       throw error
+    }
+  } else {
+    try {
+      const smsResult = await sendOrderCreatedNotification(result.order.id)
+      if (smsResult.outcome === 'failed') {
+        console.error('Order-created SMS failed:', smsResult.reason)
+      }
+    } catch (error) {
+      console.error('Order-created SMS failed:', error)
     }
   }
 
@@ -893,6 +906,15 @@ export async function cancelOrder(input: {
 
   await processPaymentRefunds(refundIds)
 
+  try {
+    const smsResult = await sendOrderCancellationNotification(input.orderId)
+    if (smsResult.outcome === 'failed') {
+      console.error('Order-cancellation SMS failed:', smsResult.reason)
+    }
+  } catch (error) {
+    console.error('Order-cancellation SMS failed:', error)
+  }
+
   return getPublicOrder(input.orderId)
 }
 
@@ -1022,9 +1044,13 @@ export async function updateOrderStatus(input: {
   })
 
   if (input.status === 'READY') {
-    const smsResult = await sendOrderReadyNotification(input.orderId)
-    if (smsResult.outcome === 'failed') {
-      console.error('Order-ready SMS failed:', smsResult.reason)
+    try {
+      const smsResult = await sendOrderReadyNotification(input.orderId)
+      if (smsResult.outcome === 'failed') {
+        console.error('Order-ready SMS failed:', smsResult.reason)
+      }
+    } catch (error) {
+      console.error('Order-ready SMS failed:', error)
     }
   }
 

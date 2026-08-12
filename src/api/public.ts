@@ -6,7 +6,11 @@ import {
   refreshCartItems,
 } from './menuItem'
 import {
+  CustomerCancellationUnavailableError,
   OrderAvailabilityError,
+  OrderConflictError,
+  OrderTrackingAuthorizationError,
+  cancelPublicOrder,
   createPublicOrder,
   getPublicOrder,
 } from './order'
@@ -219,6 +223,40 @@ publicRouter.post('/orders/:id/payment/cancel', async (req, res) => {
     const message = error?.message ?? 'Failed to cancel payment.'
     const status = message.includes('not found') ? 404 : 400
     return res.status(status).json({ error: message })
+  }
+})
+
+// POST /api/public/orders/:id/cancel
+publicRouter.post('/orders/:id/cancel', async (req, res) => {
+  const authorization = req.header('authorization') ?? ''
+  const trackingJwt = authorization.match(/^Bearer\s+(.+)$/i)?.[1]
+  if (!trackingJwt) {
+    return res
+      .status(401)
+      .json({ error: 'Order tracking authorization is required.' })
+  }
+
+  try {
+    const order = await cancelPublicOrder({
+      orderId: req.params.id,
+      version: req.body?.version,
+      trackingJwt,
+    })
+    return res.json({ order })
+  } catch (error: any) {
+    if (error instanceof OrderTrackingAuthorizationError) {
+      return res.status(403).json({ error: error.message })
+    }
+    if (
+      error instanceof OrderConflictError ||
+      error instanceof CustomerCancellationUnavailableError
+    ) {
+      return res.status(409).json({ error: error.message })
+    }
+    const message = error?.message ?? 'Failed to cancel order.'
+    return res
+      .status(message.includes('not found') ? 404 : 400)
+      .json({ error: message })
   }
 })
 

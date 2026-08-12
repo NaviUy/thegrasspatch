@@ -380,7 +380,7 @@ async function insertRefundRequest(
     foodAmountCents: number
     tipAmountCents: number
     reason: string
-    requestedByUserId: string
+    requestedByUserId: string | null
     idempotencyKey: string
   },
   client: DbClient,
@@ -472,7 +472,7 @@ export async function queueOrderCancellationRefund(
     orderId: string
     orderVersion: number
     reason: string
-    requestedByUserId: string
+    requestedByUserId: string | null
     idempotencyPrefix?: string
   },
   client: DbClient,

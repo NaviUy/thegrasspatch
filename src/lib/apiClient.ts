@@ -20,7 +20,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json')
   }
 
-  if (token) {
+  if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
@@ -253,6 +253,12 @@ export const api = {
       `/api/public/orders/${id}/payment/cancel`,
       { method: 'POST' },
     ),
+  cancelPublicOrder: (id: string, version: number, trackingJwt: string) =>
+    request<{ order: any }>(`/api/public/orders/${id}/cancel`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${trackingJwt}` },
+      body: JSON.stringify({ version }),
+    }),
   getPublicOrder: (id: string) =>
     request<{ order: any; trackingJwt: string }>(`/api/public/orders/${id}`),
   listActiveOrders: (

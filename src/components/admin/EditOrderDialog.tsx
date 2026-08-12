@@ -667,8 +667,11 @@ export function EditOrderDialog({
                     <span className="font-medium text-slate-800">
                       {eventLabel(event.type)}
                     </span>{' '}
-                    by {event.actorName ?? 'Staff'} ·{' '}
-                    {new Date(event.createdAt).toLocaleString()}
+                    by{' '}
+                    {event.reason === 'Cancelled by customer.'
+                      ? 'Customer'
+                      : (event.actorName ?? 'Staff')}{' '}
+                    · {new Date(event.createdAt).toLocaleString()}
                     {event.reason && <p>{event.reason}</p>}
                   </div>
                 ))}

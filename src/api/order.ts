@@ -18,6 +18,7 @@ import {
 } from './sms'
 import { db, schema } from '@/db/client'
 import { calculateCheckoutTipCents } from '@/lib/checkoutTip'
+import { canCustomerCancelOrder } from '@/lib/customerCancellation'
 import { calculatePaymentReconciliation } from '@/lib/paymentReconciliation'
 
 export type CreatePublicOrderInput = {
@@ -57,6 +58,22 @@ export class OrderConflictError extends Error {
   }
 }
 
+export class OrderTrackingAuthorizationError extends Error {
+  constructor() {
+    super('This order link is not authorized.')
+    this.name = 'OrderTrackingAuthorizationError'
+  }
+}
+
+export class CustomerCancellationUnavailableError extends Error {
+  constructor(
+    message = 'This order can no longer be cancelled online because preparation has started.',
+  ) {
+    super(message)
+    this.name = 'CustomerCancellationUnavailableError'
+  }
+}
+
 export type CorrectOrderInput = {
   orderId: string
   version: number
@@ -85,12 +102,14 @@ async function loadOrderSnapshot(orderId: string, client: any = db) {
         orderNumber: schema.orders.orderNumber,
         customerName: schema.orders.customerName,
         status: schema.orders.status,
+        paymentStatus: schema.orders.paymentStatus,
         version: schema.orders.version,
         assignedWorkerId: schema.orders.assignedWorkerId,
         totalPriceCents: schema.orders.totalPriceCents,
         createdAt: schema.orders.createdAt,
         updatedAt: schema.orders.updatedAt,
         cancelledAt: schema.orders.cancelledAt,
+        trackingToken: schema.orders.trackingToken,
       })
       .from(schema.orders)
       .where(eq(schema.orders.id, orderId))
@@ -151,6 +170,26 @@ function signTrackingToken(token: string) {
     SUPABASE_JWT_SECRET,
     { expiresIn: '12h', issuer: 'supabase', audience: 'authenticated' },
   )
+}
+
+function verifyTrackingToken(token: string, expectedTrackingToken: string) {
+  if (!SUPABASE_JWT_SECRET) {
+    throw new Error('SUPABASE_JWT_SECRET is not configured.')
+  }
+
+  try {
+    const payload = jwt.verify(token, SUPABASE_JWT_SECRET, {
+      issuer: 'supabase',
+      audience: 'authenticated',
+    })
+    return (
+      typeof payload !== 'string' &&
+      payload.role === 'anon' &&
+      payload.tracking_token === expectedTrackingToken
+    )
+  } catch {
+    return false
+  }
 }
 
 export async function createPublicOrder(input: CreatePublicOrderInput) {
@@ -899,6 +938,105 @@ export async function cancelOrder(input: {
         orderVersion: input.version + 1,
         reason,
         requestedByUserId: input.userId,
+      },
+      trx,
+    )
+  })
+
+  await processPaymentRefunds(refundIds)
+
+  try {
+    const smsResult = await sendOrderCancellationNotification(input.orderId)
+    if (smsResult.outcome === 'failed') {
+      console.error('Order-cancellation SMS failed:', smsResult.reason)
+    }
+  } catch (error) {
+    console.error('Order-cancellation SMS failed:', error)
+  }
+
+  return getPublicOrder(input.orderId)
+}
+
+export async function cancelPublicOrder(input: {
+  orderId: string
+  version: number
+  trackingJwt: string
+}) {
+  if (!Number.isInteger(input.version) || input.version < 1) {
+    throw new Error('A valid order version is required.')
+  }
+
+  const reason = 'Cancelled by customer.'
+  const refundIds = await db.transaction(async (trx) => {
+    await trx.execute(
+      sql`select ${schema.orders.id} from ${schema.orders} where ${schema.orders.id} = ${input.orderId} for update`,
+    )
+    const before = await loadOrderSnapshot(input.orderId, trx)
+
+    if (!verifyTrackingToken(input.trackingJwt, before.trackingToken)) {
+      throw new OrderTrackingAuthorizationError()
+    }
+    if (before.version !== input.version) throw new OrderConflictError()
+    if (!canCustomerCancelOrder(before)) {
+      throw new CustomerCancellationUnavailableError(
+        before.status === 'CANCELLED'
+          ? 'This order is already cancelled.'
+          : 'This order can no longer be cancelled online because preparation has started.',
+      )
+    }
+
+    const activeSession = (
+      await trx
+        .select({ id: schema.sessions.id })
+        .from(schema.sessions)
+        .where(eq(schema.sessions.isActive, true))
+        .limit(1)
+    ).at(0)
+    if (!activeSession || before.sessionId !== activeSession.id) {
+      throw new CustomerCancellationUnavailableError(
+        'This order can no longer be cancelled online.',
+      )
+    }
+
+    const updated = (
+      await trx
+        .update(schema.orders)
+        .set({
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancelledByUserId: null,
+          cancellationReason: reason,
+          version: sql`${schema.orders.version} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.orders.id, before.id),
+            eq(schema.orders.version, input.version),
+            eq(schema.orders.status, 'PENDING'),
+          ),
+        )
+        .returning({ id: schema.orders.id })
+    ).at(0)
+    if (!updated) throw new OrderConflictError()
+
+    const after = await loadOrderSnapshot(before.id, trx)
+    await trx.insert(schema.orderEvents).values({
+      orderId: before.id,
+      actorUserId: null,
+      type: 'ORDER_CANCELLED',
+      reason,
+      before,
+      after,
+    })
+
+    return queueOrderCancellationRefund(
+      {
+        orderId: before.id,
+        orderVersion: input.version + 1,
+        reason,
+        requestedByUserId: null,
+        idempotencyPrefix: 'customer-order-cancellation',
       },
       trx,
     )

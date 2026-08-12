@@ -939,8 +939,10 @@ function RouteComponent() {
                       {orderEventLabel(event.type)}
                     </p>
                     <p className="text-xs text-slate-500">
-                      {event.actorName ?? 'Staff'} ·{' '}
-                      {new Date(event.createdAt).toLocaleString()}
+                      {event.reason === 'Cancelled by customer.'
+                        ? 'Customer'
+                        : (event.actorName ?? 'Staff')}{' '}
+                      · {new Date(event.createdAt).toLocaleString()}
                     </p>
                     {event.reason && (
                       <p className="mt-2 text-sm text-slate-700">

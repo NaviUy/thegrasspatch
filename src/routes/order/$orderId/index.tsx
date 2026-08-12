@@ -2,7 +2,17 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/apiClient'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { supabase } from '@/lib/supabaseClient'
+import { canCustomerCancelOrder } from '@/lib/customerCancellation'
 import { formatOrderLabel } from '@/lib/orderNumber'
 import { clearStoredCart } from '@/hooks/useCart'
 
@@ -22,6 +32,7 @@ type OrderItem = {
 
 type Order = {
   id: string
+  version: number
   orderNumber?: number | null
   status: string
   customerName: string
@@ -45,6 +56,7 @@ type Order = {
   totalRefundedCents?: number
   paymentAmountDueCents?: number
   refundOutstandingCents?: number
+  refundableOnCancelCents?: number
   refundProgressStatus?: 'NONE' | 'PENDING' | 'FAILED'
   createdAt?: string
   estimatedWaitMinMinutes?: number | null
@@ -92,6 +104,9 @@ function RouteComponent() {
   const [paymentAction, setPaymentAction] = useState<
     'RESUMING' | 'CANCELLING' | null
   >(null)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [customerCancellationPending, setCustomerCancellationPending] =
+    useState(false)
   const confirmationAttempted = useRef(false)
   const returnedCartCleared = useRef(false)
 
@@ -300,6 +315,11 @@ function RouteComponent() {
     order?.paymentStatus === 'PAID' ||
     order?.paymentStatus === 'PARTIALLY_REFUNDED' ||
     order?.paymentStatus === 'REFUNDED'
+  const customerCanCancel = order ? canCustomerCancelOrder(order) : false
+
+  useEffect(() => {
+    if (!customerCanCancel) setCancelDialogOpen(false)
+  }, [customerCanCancel])
   const tipPaidCents =
     (order?.checkoutTipCents ?? 0) + (order?.postOrderTipCents ?? 0)
   const displayedCheckoutTipCents = paymentPending
@@ -360,6 +380,37 @@ function RouteComponent() {
       setError(err.message ?? 'Failed to cancel payment.')
     } finally {
       setPaymentAction(null)
+    }
+  }
+
+  const cancelConfirmedOrder = async () => {
+    if (!order || !trackingJwt) return
+
+    setCustomerCancellationPending(true)
+    setError(null)
+    try {
+      const { order: cancelledOrder } = await api.cancelPublicOrder(
+        order.id,
+        order.version,
+        trackingJwt,
+      )
+      setOrder(cancelledOrder as Order)
+      setCancelDialogOpen(false)
+    } catch (err: any) {
+      console.error(err)
+      setError(err.message ?? 'Failed to cancel your order.')
+      if (err.status === 409) {
+        try {
+          await reloadOrder()
+        } catch (reloadError) {
+          console.error(
+            'Failed to refresh order after cancellation:',
+            reloadError,
+          )
+        }
+      }
+    } finally {
+      setCustomerCancellationPending(false)
     }
   }
 
@@ -644,6 +695,76 @@ function RouteComponent() {
                 </p>
               </div>
             ) : null}
+
+            {customerCanCancel && (
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    Need to cancel?
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    You can cancel until the team starts making your order.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 sm:w-auto"
+                  onClick={() => setCancelDialogOpen(true)}
+                >
+                  Cancel order
+                </Button>
+              </div>
+            )}
+
+            <Dialog
+              open={cancelDialogOpen}
+              onOpenChange={(open) => {
+                if (!customerCancellationPending) setCancelDialogOpen(open)
+              }}
+            >
+              <DialogContent showCloseButton={!customerCancellationPending}>
+                <DialogHeader>
+                  <DialogTitle>Cancel this order?</DialogTitle>
+                  <DialogDescription>
+                    This cannot be undone. The reserved items will return to the
+                    menu.
+                  </DialogDescription>
+                </DialogHeader>
+                {(order.refundableOnCancelCents ?? 0) > 0 ? (
+                  <p className="text-sm text-slate-700">
+                    Stripe will automatically refund $
+                    {formatDollars(order.refundableOnCancelCents ?? 0)} to your
+                    original payment method.
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-700">
+                    No payment refund is needed for this order.
+                  </p>
+                )}
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={customerCancellationPending}
+                    >
+                      Keep order
+                    </Button>
+                  </DialogClose>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={cancelConfirmedOrder}
+                    disabled={customerCancellationPending}
+                  >
+                    {customerCancellationPending
+                      ? 'Cancelling…'
+                      : 'Yes, cancel order'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {order.refundProgressStatus === 'PENDING' && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">

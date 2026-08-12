@@ -9,6 +9,7 @@ on:
       - 'src/api-server.ts'
       - 'src/lambda-handler.ts'
       - 'src/lib/checkoutTip.ts'
+      - 'src/lib/customerCancellation.ts'
       - 'src/lib/inventory.ts'
       - 'src/lib/itemOptions.ts'
       - 'src/lib/paymentReconciliation.ts'

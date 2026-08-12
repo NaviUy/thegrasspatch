@@ -16,6 +16,7 @@ on:
       - 'src/lib/smsConsent.ts'
       - 'src/lib/stripe.ts'
       - 'src/lib/supabaseServiceClient.ts'
+      - 'src/lib/telnyx.ts'
       - 'src/lib/waitEstimate.ts'
       - 'package.json'
       - 'package-lock.json'

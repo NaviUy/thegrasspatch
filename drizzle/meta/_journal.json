@@ -120,6 +120,13 @@
       "when": 1786251565667,
       "tag": "20260809050135_add_stripe_payment_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786548396781,
+      "tag": "0017_add_telnyx_sms",
+      "breakpoints": true
     }
   ]
 }

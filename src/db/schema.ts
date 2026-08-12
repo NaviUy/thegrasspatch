@@ -440,25 +440,39 @@ export const orderEvents = pgTable('order_events', {
     .notNull(),
 })
 
-/** Optional: SMS log for Twilio later */
-export const smsEvents = pgTable('sms_events', {
-  id: uuid('id').defaultRandom().primaryKey(),
-
-  orderId: uuid('order_id').references(() => orders.id, {
-    onDelete: 'set null',
+/** Outbound SMS audit log and webhook idempotency records. */
+export const smsEvents = pgTable(
+  'sms_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    orderId: uuid('order_id').references(() => orders.id, {
+      onDelete: 'set null',
+    }),
+    phone: text('phone').notNull(),
+    type: varchar('type', { length: 50 }).notNull(),
+    message: text('message').notNull(),
+    providerMessageId: text('provider_message_id'),
+    sourceMessageId: text('source_message_id'),
+    status: varchar('status', { length: 20 }).notNull().default('SENDING'),
+    errorMessage: text('error_message'),
+    sentAt: timestamp('sent_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    orderTypeUnique: uniqueIndex('sms_events_order_type_unique').on(
+      table.orderId,
+      table.type,
+    ),
+    providerMessageIdUnique: uniqueIndex(
+      'sms_events_provider_message_id_unique',
+    ).on(table.providerMessageId),
+    sourceMessageIdUnique: uniqueIndex(
+      'sms_events_source_message_id_unique',
+    ).on(table.sourceMessageId),
   }),
-
-  phone: text('phone').notNull(),
-
-  type: varchar('type', { length: 50 }).notNull(), // 'ORDER_CREATED' | 'ORDER_READY' | etc.
-
-  message: text('message').notNull(),
-
-  providerMessageId: text('provider_message_id'), // Twilio SID
-  status: varchar('status', { length: 20 }).notNull().default('SENT'),
-
-  sentAt: timestamp('sent_at', { withTimezone: true }).defaultNow().notNull(),
-})
+)
 
 export const inviteTokens = pgTable('invite_tokens', {
   id: uuid('id').defaultRandom().primaryKey(),

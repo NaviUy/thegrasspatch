@@ -51,6 +51,8 @@ import {
 } from './api/waitEstimate'
 import { getSessionAnalytics, getSessionAnalyticsCsv } from './api/analytics'
 import { retryOrderRefunds, stripeWebhookHandler } from './api/payments'
+import { processTelnyxWebhook } from './api/telnyxWebhook'
+import { verifyTelnyxWebhook } from './lib/telnyx'
 
 const MENU_IMAGE_BUCKET = process.env.SUPABASE_MENU_BUCKET || 'menu-images'
 const upload = multer({
@@ -68,6 +70,40 @@ app.post(
   '/api/stripe/webhook',
   express.raw({ type: 'application/json' }),
   stripeWebhookHandler,
+)
+app.post(
+  '/api/webhooks/telnyx',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    if (!process.env.TELNYX_PUBLIC_KEY) {
+      return res
+        .status(503)
+        .json({ error: 'Telnyx webhook is not configured.' })
+    }
+    if (!Buffer.isBuffer(req.body)) {
+      return res.status(400).json({ error: 'Raw webhook body is required.' })
+    }
+
+    const rawBody = req.body.toString('utf8')
+    let event
+    try {
+      event = await verifyTelnyxWebhook(rawBody, {
+        'telnyx-signature-ed25519': req.get('telnyx-signature-ed25519') ?? '',
+        'telnyx-timestamp': req.get('telnyx-timestamp') ?? '',
+      })
+    } catch (error) {
+      console.warn('Rejected Telnyx webhook:', error)
+      return res.status(403).json({ error: 'Invalid webhook signature.' })
+    }
+
+    try {
+      await processTelnyxWebhook(event)
+      return res.sendStatus(200)
+    } catch (error) {
+      console.error('Telnyx webhook processing error:', error)
+      return res.status(500).json({ error: 'Webhook processing failed.' })
+    }
+  },
 )
 app.use(express.json())
 app.use('/api/public', publicRouter)

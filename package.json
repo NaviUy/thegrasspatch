@@ -14,7 +14,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "api:dev": "tsx watch src/api-server.ts",
-    "dev:all": "concurrently \"npm run dev\" \"npm run api:dev\"",
+    "dev:all": "node scripts/dev-all.mjs",
     "api:build:lambda": "esbuild src/lambda-handler.ts --bundle --platform=node --target=node20 --outfile=dist/lambda.js",
     "dev:spa": "vite --config vite.spa.config.ts",
     "build:spa": "vite build --config vite.spa.config.ts"
@@ -52,6 +52,7 @@
     "stripe": "^22.4.0",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.0.6",
+    "telnyx": "^7.13.0",
     "vite-tsconfig-paths": "^5.1.4"
   },
   "devDependencies": {

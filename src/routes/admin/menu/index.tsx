@@ -24,6 +24,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Reorder } from 'framer-motion'
+import { ItemInventoryDialog } from '@/components/admin/ItemInventoryDialog'
 
 export const Route = createFileRoute('/admin/menu/')({
   component: RouteComponent,
@@ -37,6 +38,31 @@ type MenuItem = {
   imagePlaceholderUrl?: string | null
   badges?: Array<{ label: string; color?: string }> | null
   isActive: boolean
+  options: Array<MenuOptionGroup>
+}
+
+type MenuOptionChoice = {
+  id?: string
+  draftId: string
+  name: string
+  price: string
+  isDefault: boolean
+  isActive: boolean
+  inventoryLimit: string
+  isSoldOut: boolean
+  quantitySold: number
+}
+
+type MenuOptionGroup = {
+  id?: string
+  draftId: string
+  name: string
+  selectionType: 'SINGLE' | 'MULTIPLE'
+  isRequired: boolean
+  minSelections: number
+  maxSelections: number | null
+  isActive: boolean
+  choices: Array<MenuOptionChoice>
 }
 
 type EditMenuItemDialogProps = {
@@ -46,6 +72,35 @@ type EditMenuItemDialogProps = {
 
 type BadgeForm = { label: string }
 
+function draftId() {
+  return Math.random().toString(36).slice(2)
+}
+
+function createOptionDrafts(options: Array<any> = []): Array<MenuOptionGroup> {
+  return options.map((group) => ({
+    id: group.id,
+    draftId: group.id ?? draftId(),
+    name: group.name,
+    selectionType: group.selectionType,
+    isRequired: group.isRequired,
+    minSelections: group.minSelections,
+    maxSelections: group.maxSelections,
+    isActive: group.isActive,
+    choices: group.choices.map((choice: any) => ({
+      id: choice.id,
+      draftId: choice.id ?? draftId(),
+      name: choice.name,
+      price: (choice.priceAdjustmentCents / 100).toFixed(2),
+      isDefault: choice.isDefault,
+      isActive: choice.isActive,
+      inventoryLimit:
+        choice.inventoryLimit === null ? '' : String(choice.inventoryLimit),
+      isSoldOut: choice.manuallySoldOut ?? false,
+      quantitySold: choice.quantitySold ?? 0,
+    })),
+  }))
+}
+
 function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(item.name)
@@ -53,6 +108,9 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [badges, setBadges] = useState<BadgeForm[]>(
     item.badges?.map((b) => ({ label: b.label })) ?? [],
+  )
+  const [optionGroups, setOptionGroups] = useState<Array<MenuOptionGroup>>(
+    createOptionDrafts(item.options),
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -86,6 +144,27 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
         imageUrl: uploadedUrl,
         imagePlaceholderUrl: uploadedPlaceholder,
         badges: badges.map((b) => ({ label: b.label, color: '#000000' })),
+        options: optionGroups.map((group) => ({
+          id: group.id,
+          name: group.name.trim(),
+          selectionType: group.selectionType,
+          isRequired: group.isRequired,
+          minSelections: group.minSelections,
+          maxSelections: group.maxSelections,
+          isActive: group.isActive,
+          choices: group.choices.map((choice) => ({
+            id: choice.id,
+            name: choice.name.trim(),
+            priceAdjustmentCents: Math.round(Number(choice.price) * 100),
+            isDefault: choice.isDefault,
+            isActive: choice.isActive,
+            inventoryLimit:
+              choice.inventoryLimit.trim() === ''
+                ? null
+                : Number(choice.inventoryLimit),
+            isSoldOut: choice.isSoldOut,
+          })),
+        })),
       })
       onUpdated(updated)
       setOpen(false) // ✅ only close on success
@@ -99,13 +178,26 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (nextOpen) {
+          setName(item.name)
+          setPrice((item.priceCents / 100).toFixed(2))
+          setBadges(item.badges?.map((badge) => ({ label: badge.label })) ?? [])
+          setOptionGroups(createOptionDrafts(item.options))
+          setImageFile(null)
+          setError(null)
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           Edit
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Edit "{item.name}"</DialogTitle>
           <DialogDescription>
@@ -187,6 +279,444 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
             >
               Add badge
             </Button>
+          </div>
+
+          <div className="space-y-3 border-t border-slate-200 pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Label>Item options</Label>
+                <p className="text-xs text-slate-500">
+                  Configure choices, defaults, pricing, and active-session
+                  inventory.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setOptionGroups((groups) => [
+                    ...groups,
+                    {
+                      draftId: draftId(),
+                      name: '',
+                      selectionType: 'SINGLE',
+                      isRequired: false,
+                      minSelections: 0,
+                      maxSelections: 1,
+                      isActive: true,
+                      choices: [],
+                    },
+                  ])
+                }
+              >
+                Add option group
+              </Button>
+            </div>
+
+            {optionGroups.length === 0 && (
+              <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-center text-sm text-slate-500">
+                This item has no options yet.
+              </p>
+            )}
+
+            {optionGroups.map((group, groupIndex) => (
+              <div
+                key={group.draftId}
+                className="space-y-3 rounded-lg border border-slate-200 p-3"
+              >
+                <div className="grid gap-2 sm:grid-cols-[1fr_150px_auto]">
+                  <Input
+                    aria-label="Option group name"
+                    placeholder="Group name, e.g. Milk"
+                    value={group.name}
+                    onChange={(event) =>
+                      setOptionGroups((groups) =>
+                        groups.map((candidate, index) =>
+                          index === groupIndex
+                            ? { ...candidate, name: event.target.value }
+                            : candidate,
+                        ),
+                      )
+                    }
+                  />
+                  <select
+                    aria-label="Selection type"
+                    className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                    value={group.selectionType}
+                    onChange={(event) =>
+                      setOptionGroups((groups) =>
+                        groups.map((candidate, index) =>
+                          index === groupIndex
+                            ? {
+                                ...candidate,
+                                selectionType: event.target.value as
+                                  | 'SINGLE'
+                                  | 'MULTIPLE',
+                                maxSelections:
+                                  event.target.value === 'SINGLE'
+                                    ? 1
+                                    : candidate.maxSelections,
+                              }
+                            : candidate,
+                        ),
+                      )
+                    }
+                  >
+                    <option value="SINGLE">Choose one</option>
+                    <option value="MULTIPLE">Choose multiple</option>
+                  </select>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-red-600"
+                    onClick={() =>
+                      setOptionGroups((groups) =>
+                        groups.filter((_, index) => index !== groupIndex),
+                      )
+                    }
+                  >
+                    Remove
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={group.isRequired}
+                      onChange={(event) =>
+                        setOptionGroups((groups) =>
+                          groups.map((candidate, index) =>
+                            index === groupIndex
+                              ? {
+                                  ...candidate,
+                                  isRequired: event.target.checked,
+                                  minSelections: event.target.checked
+                                    ? Math.max(1, candidate.minSelections)
+                                    : 0,
+                                }
+                              : candidate,
+                          ),
+                        )
+                      }
+                    />
+                    Required
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={group.isActive}
+                      onChange={(event) =>
+                        setOptionGroups((groups) =>
+                          groups.map((candidate, index) =>
+                            index === groupIndex
+                              ? { ...candidate, isActive: event.target.checked }
+                              : candidate,
+                          ),
+                        )
+                      }
+                    />
+                    Active
+                  </label>
+                  {group.selectionType === 'MULTIPLE' && (
+                    <>
+                      <label className="flex items-center gap-1">
+                        Min
+                        <Input
+                          className="h-8 w-20"
+                          type="number"
+                          min={0}
+                          value={group.minSelections}
+                          onChange={(event) =>
+                            setOptionGroups((groups) =>
+                              groups.map((candidate, index) =>
+                                index === groupIndex
+                                  ? {
+                                      ...candidate,
+                                      minSelections: Number(event.target.value),
+                                    }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <label className="flex items-center gap-1">
+                        Max
+                        <Input
+                          className="h-8 w-20"
+                          type="number"
+                          min={group.minSelections}
+                          placeholder="Any"
+                          value={group.maxSelections ?? ''}
+                          onChange={(event) =>
+                            setOptionGroups((groups) =>
+                              groups.map((candidate, index) =>
+                                index === groupIndex
+                                  ? {
+                                      ...candidate,
+                                      maxSelections:
+                                        event.target.value === ''
+                                          ? null
+                                          : Number(event.target.value),
+                                    }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                    </>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {group.choices.map((choice, choiceIndex) => (
+                    <div
+                      key={choice.draftId}
+                      className="grid gap-2 rounded-md bg-slate-50 p-2 sm:grid-cols-2"
+                    >
+                      <Input
+                        aria-label="Choice name"
+                        placeholder="Choice name"
+                        value={choice.name}
+                        onChange={(event) =>
+                          setOptionGroups((groups) =>
+                            groups.map((candidate, index) =>
+                              index === groupIndex
+                                ? {
+                                    ...candidate,
+                                    choices: candidate.choices.map(
+                                      (candidateChoice, index) =>
+                                        index === choiceIndex
+                                          ? {
+                                              ...candidateChoice,
+                                              name: event.target.value,
+                                            }
+                                          : candidateChoice,
+                                    ),
+                                  }
+                                : candidate,
+                            ),
+                          )
+                        }
+                      />
+                      <label className="flex items-center gap-2 text-xs text-slate-600">
+                        Extra price $
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={choice.price}
+                          onChange={(event) =>
+                            setOptionGroups((groups) =>
+                              groups.map((candidate, index) =>
+                                index === groupIndex
+                                  ? {
+                                      ...candidate,
+                                      choices: candidate.choices.map(
+                                        (candidateChoice, index) =>
+                                          index === choiceIndex
+                                            ? {
+                                                ...candidateChoice,
+                                                price: event.target.value,
+                                              }
+                                            : candidateChoice,
+                                      ),
+                                    }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 text-xs">
+                        Active-session inventory
+                        <Input
+                          className="h-8"
+                          type="number"
+                          min={choice.quantitySold}
+                          placeholder="Unlimited"
+                          value={choice.inventoryLimit}
+                          onChange={(event) =>
+                            setOptionGroups((groups) =>
+                              groups.map((candidate, index) =>
+                                index === groupIndex
+                                  ? {
+                                      ...candidate,
+                                      choices: candidate.choices.map(
+                                        (candidateChoice, index) =>
+                                          index === choiceIndex
+                                            ? {
+                                                ...candidateChoice,
+                                                inventoryLimit:
+                                                  event.target.value,
+                                              }
+                                            : candidateChoice,
+                                      ),
+                                    }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <div className="flex flex-wrap items-center gap-3 text-xs">
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={choice.isDefault}
+                            disabled={!choice.isActive}
+                            onChange={(event) =>
+                              setOptionGroups((groups) =>
+                                groups.map((candidate, index) =>
+                                  index === groupIndex
+                                    ? {
+                                        ...candidate,
+                                        choices: candidate.choices.map(
+                                          (candidateChoice, index) => ({
+                                            ...candidateChoice,
+                                            isDefault:
+                                              index === choiceIndex
+                                                ? event.target.checked
+                                                : candidate.selectionType ===
+                                                    'SINGLE'
+                                                  ? false
+                                                  : candidateChoice.isDefault,
+                                          }),
+                                        ),
+                                      }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                          />
+                          Default
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={choice.isActive}
+                            onChange={(event) =>
+                              setOptionGroups((groups) =>
+                                groups.map((candidate, index) =>
+                                  index === groupIndex
+                                    ? {
+                                        ...candidate,
+                                        choices: candidate.choices.map(
+                                          (candidateChoice, index) =>
+                                            index === choiceIndex
+                                              ? {
+                                                  ...candidateChoice,
+                                                  isActive:
+                                                    event.target.checked,
+                                                  isDefault:
+                                                    event.target.checked &&
+                                                    candidateChoice.isDefault,
+                                                }
+                                              : candidateChoice,
+                                        ),
+                                      }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                          />
+                          Active
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={choice.isSoldOut}
+                            onChange={(event) =>
+                              setOptionGroups((groups) =>
+                                groups.map((candidate, index) =>
+                                  index === groupIndex
+                                    ? {
+                                        ...candidate,
+                                        choices: candidate.choices.map(
+                                          (candidateChoice, index) =>
+                                            index === choiceIndex
+                                              ? {
+                                                  ...candidateChoice,
+                                                  isSoldOut:
+                                                    event.target.checked,
+                                                }
+                                              : candidateChoice,
+                                        ),
+                                      }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                          />
+                          Sold out
+                        </label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="ml-auto text-red-600"
+                          onClick={() =>
+                            setOptionGroups((groups) =>
+                              groups.map((candidate, index) =>
+                                index === groupIndex
+                                  ? {
+                                      ...candidate,
+                                      choices: candidate.choices.filter(
+                                        (_, index) => index !== choiceIndex,
+                                      ),
+                                    }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                      {choice.quantitySold > 0 && (
+                        <p className="text-xs text-slate-500 sm:col-span-2">
+                          {choice.quantitySold} already ordered this session.
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setOptionGroups((groups) =>
+                        groups.map((candidate, index) =>
+                          index === groupIndex
+                            ? {
+                                ...candidate,
+                                choices: [
+                                  ...candidate.choices,
+                                  {
+                                    draftId: draftId(),
+                                    name: '',
+                                    price: '0.00',
+                                    isDefault: false,
+                                    isActive: true,
+                                    inventoryLimit: '',
+                                    isSoldOut: false,
+                                    quantitySold: 0,
+                                  },
+                                ],
+                              }
+                            : candidate,
+                        ),
+                      )
+                    }
+                  >
+                    Add choice
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -493,6 +1023,8 @@ function RouteComponent() {
                       )
                     }
                   />
+
+                  <ItemInventoryDialog menuItemId={item.id} name={item.name} />
 
                   <Button
                     variant="outline"

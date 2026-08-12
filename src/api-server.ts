@@ -7,8 +7,8 @@ import { eq } from 'drizzle-orm'
 import {
   getUserFromToken,
   loginWithPassword,
-  signupWithInvite,
   signSupabaseToken,
+  signupWithInvite,
 } from './api/auth'
 import {
   activateSession,
@@ -23,16 +23,34 @@ import {
   listMenuItems,
   reorderMenuItems,
   updateMenuItem,
+  updateMenuItemWithOptions,
 } from './api/menuItem'
 import { publicRouter } from './api/public'
 import {
+  OrderAvailabilityError,
+  OrderConflictError,
   assignOrderToUser,
+  cancelOrder,
+  correctOrder,
+  getPublicOrder,
   listActiveSessionOrders,
-  updateOrderStatus,
+  listOrderEvents,
   unassignOrder,
+  updateOrderStatus,
 } from './api/order'
 import { db, schema } from './db/client'
 import { supabaseService } from './lib/supabaseServiceClient'
+import {
+  getActiveSessionInventory,
+  updateActiveSessionInventory,
+} from './api/inventory'
+import { updateActiveOptionInventory } from './api/options'
+import {
+  getSessionWaitEstimate,
+  updateSessionWaitSettings,
+} from './api/waitEstimate'
+import { getSessionAnalytics, getSessionAnalyticsCsv } from './api/analytics'
+import { retryOrderRefunds, stripeWebhookHandler } from './api/payments'
 import { processTelnyxWebhook } from './api/telnyxWebhook'
 import { verifyTelnyxWebhook } from './lib/telnyx'
 
@@ -46,28 +64,32 @@ const app = express()
 const PORT = process.env.PORT ?? 4000
 
 app.use(cors())
-
+// Stripe signature verification requires the exact raw request body. This
+// route must stay before the global JSON parser.
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  stripeWebhookHandler,
+)
 app.post(
   '/api/webhooks/telnyx',
   express.raw({ type: 'application/json' }),
   async (req, res) => {
     if (!process.env.TELNYX_PUBLIC_KEY) {
-      return res.status(503).json({ error: 'Telnyx webhook is not configured.' })
+      return res
+        .status(503)
+        .json({ error: 'Telnyx webhook is not configured.' })
     }
-
     if (!Buffer.isBuffer(req.body)) {
       return res.status(400).json({ error: 'Raw webhook body is required.' })
     }
 
     const rawBody = req.body.toString('utf8')
-    const signature = req.get('telnyx-signature-ed25519') ?? ''
-    const timestamp = req.get('telnyx-timestamp') ?? ''
-
     let event
     try {
       event = await verifyTelnyxWebhook(rawBody, {
-        'telnyx-signature-ed25519': signature,
-        'telnyx-timestamp': timestamp,
+        'telnyx-signature-ed25519': req.get('telnyx-signature-ed25519') ?? '',
+        'telnyx-timestamp': req.get('telnyx-timestamp') ?? '',
       })
     } catch (error) {
       console.warn('Rejected Telnyx webhook:', error)
@@ -83,11 +105,11 @@ app.post(
     }
   },
 )
-
 app.use(express.json())
 app.use('/api/public', publicRouter)
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: {
@@ -187,7 +209,7 @@ app.post('/api/auth/login', async (req, res) => {
  * GET /api/auth/me
  * headers: Authorization: Bearer <token>
  */
-app.get('/api/auth/me', requireAuth, async (req, res) => {
+app.get('/api/auth/me', requireAuth, (req, res) => {
   const supabaseJwt = signSupabaseToken(req.user!)
   res.json({ user: req.user, supabaseJwt })
 })
@@ -221,7 +243,7 @@ app.patch('/api/auth/me', requireAuth, async (req, res) => {
  * Session routes
  */
 
-//List all sessions
+// List all sessions
 app.get('/api/sessions', requireAuth, async (_req, res) => {
   try {
     const sessions = await listSessions()
@@ -232,7 +254,7 @@ app.get('/api/sessions', requireAuth, async (_req, res) => {
   }
 })
 
-//Create a new session
+// Create a new session
 app.post('/api/sessions', requireAuth, async (req, res) => {
   const { name } = req.body ?? {}
   if (!name) {
@@ -248,7 +270,7 @@ app.post('/api/sessions', requireAuth, async (req, res) => {
   }
 })
 
-//Activating a session
+// Activating a session
 app.post('/api/sessions/:id/activate', requireAuth, async (req, res) => {
   const { id } = req.params
   try {
@@ -262,7 +284,7 @@ app.post('/api/sessions/:id/activate', requireAuth, async (req, res) => {
   }
 })
 
-//Deactivating a session
+// Deactivating a session
 app.post('/api/sessions/:id/close', requireAuth, async (req, res) => {
   const { id } = req.params
   try {
@@ -276,6 +298,162 @@ app.post('/api/sessions/:id/close', requireAuth, async (req, res) => {
   }
 })
 
+app.get('/api/sessions/:id/wait-estimate', requireAuth, async (req, res) => {
+  try {
+    const estimate = await getSessionWaitEstimate(req.params.id)
+    res.set('Cache-Control', 'no-store')
+    res.json({ estimate })
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to load wait estimate.'
+    res.status(message === 'Session not found.' ? 404 : 500).json({
+      error: message,
+    })
+  }
+})
+
+app.patch('/api/sessions/:id/wait-estimate', requireAuth, async (req, res) => {
+  if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+    return res.status(403).json({
+      error: 'Only owners and admins can change wait estimate settings.',
+    })
+  }
+  try {
+    const estimate = await updateSessionWaitSettings(req.params.id, {
+      mode: req.body?.mode,
+      manualMinMinutes: req.body?.manualMinMinutes ?? null,
+      manualMaxMinutes: req.body?.manualMaxMinutes ?? null,
+      parallelCapacity: req.body?.parallelCapacity,
+    })
+    res.json({ estimate })
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to update wait estimate.'
+    res.status(message === 'Session not found.' ? 404 : 400).json({
+      error: message,
+    })
+  }
+})
+
+function canViewAnalytics(role?: string) {
+  return role === 'OWNER' || role === 'ADMIN'
+}
+
+app.get(
+  '/api/analytics/sessions/:id/summary',
+  requireAuth,
+  async (req, res) => {
+    if (!canViewAnalytics(req.user?.role)) {
+      return res
+        .status(403)
+        .json({ error: 'Only owners and admins can view analytics.' })
+    }
+    try {
+      const analytics = await getSessionAnalytics(req.params.id)
+      res.set('Cache-Control', 'no-store')
+      res.json({ analytics })
+    } catch (error: any) {
+      const message = error?.message ?? 'Failed to load session analytics.'
+      res.status(message === 'Session not found.' ? 404 : 500).json({
+        error: message,
+      })
+    }
+  },
+)
+
+app.get('/api/analytics/sessions/:id.csv', requireAuth, async (req, res) => {
+  if (!canViewAnalytics(req.user?.role)) {
+    return res
+      .status(403)
+      .json({ error: 'Only owners and admins can export analytics.' })
+  }
+  try {
+    const { session, csv } = await getSessionAnalyticsCsv(req.params.id)
+    const safeName = session.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    res.set('Cache-Control', 'no-store')
+    res.set('Content-Type', 'text/csv; charset=utf-8')
+    res.set(
+      'Content-Disposition',
+      `attachment; filename="${safeName || 'session'}-analytics.csv"`,
+    )
+    res.send(`\uFEFF${csv}`)
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to export session analytics.'
+    res.status(message === 'Session not found.' ? 404 : 500).json({
+      error: message,
+    })
+  }
+})
+
+// Inventory for the active session. Workers may view; owners/admins may edit.
+app.get('/api/inventory/active', requireAuth, async (_req, res) => {
+  try {
+    const result = await getActiveSessionInventory({ includeInactive: true })
+    res.set('Cache-Control', 'no-store')
+    res.json(result)
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to load inventory.'
+    const status = message.includes('Active session not found') ? 400 : 500
+    res.status(status).json({ error: message })
+  }
+})
+
+app.patch(
+  '/api/inventory/active/:menuItemId',
+  requireAuth,
+  async (req, res) => {
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'OWNER') {
+      return res
+        .status(403)
+        .json({ error: 'Only owners and admins can update inventory.' })
+    }
+
+    const { menuItemId } = req.params
+    const hasInventoryLimit = Object.prototype.hasOwnProperty.call(
+      req.body ?? {},
+      'inventoryLimit',
+    )
+    const hasSoldOut = Object.prototype.hasOwnProperty.call(
+      req.body ?? {},
+      'isSoldOut',
+    )
+
+    if (!hasInventoryLimit && !hasSoldOut) {
+      return res.status(400).json({
+        error: 'Provide inventoryLimit or isSoldOut.',
+      })
+    }
+
+    const { inventoryLimit, isSoldOut } = req.body ?? {}
+    if (
+      hasInventoryLimit &&
+      inventoryLimit !== null &&
+      (!Number.isInteger(inventoryLimit) || inventoryLimit < 0)
+    ) {
+      return res.status(400).json({
+        error: 'Inventory must be a nonnegative whole number or null.',
+      })
+    }
+    if (hasSoldOut && typeof isSoldOut !== 'boolean') {
+      return res.status(400).json({ error: 'isSoldOut must be a boolean.' })
+    }
+
+    try {
+      const result = await updateActiveSessionInventory({
+        menuItemId,
+        ...(hasInventoryLimit ? { inventoryLimit } : {}),
+        ...(hasSoldOut ? { isSoldOut } : {}),
+      })
+      res.json(result)
+    } catch (error: any) {
+      const message = error?.message ?? 'Failed to update inventory.'
+      const status = message.includes('not found') ? 404 : 400
+      res.status(status).json({ error: message })
+    }
+  },
+)
+
 app.post('/api/invites', requireAuth, async (req, res) => {
   const { role } = req.body ?? {}
 
@@ -284,9 +462,7 @@ app.post('/api/invites', requireAuth, async (req, res) => {
   }
 
   if (role !== 'ADMIN' && role !== 'WORKER') {
-    return res
-      .status(400)
-      .json({ error: 'Role must be \"ADMIN\" or \"WORKER\".' })
+    return res.status(400).json({ error: 'Role must be "ADMIN" or "WORKER".' })
   }
 
   try {
@@ -302,7 +478,7 @@ app.post('/api/invites', requireAuth, async (req, res) => {
  * MenuItems routes
  */
 
-//list menu items
+// list menu items
 app.get('/api/menu-items', requireAuth, async (_req, res) => {
   try {
     const items = await listMenuItems()
@@ -314,7 +490,7 @@ app.get('/api/menu-items', requireAuth, async (_req, res) => {
   }
 })
 
-//create menu items (Admin only)
+// create menu items (Admin only)
 app.post('/api/menu-items', requireAuth, async (req, res) => {
   if (req.user?.role !== 'ADMIN') {
     return res.status(403).json({ error: 'Only admins can create menu items.' })
@@ -338,7 +514,7 @@ app.post('/api/menu-items', requireAuth, async (req, res) => {
       badges,
       isActive,
     })
-    res.status(201).json({ item })
+    res.status(201).json({ item: { ...item, options: [] } })
   } catch (error: any) {
     console.error('Create menu item error: ', error)
     res.status(500).json({ error: 'Failed to create menu item.' })
@@ -377,7 +553,7 @@ app.post(
         upsert: false,
       })
 
-    if (error || !data?.path) {
+    if (error || !data.path) {
       console.error('Upload error:', error)
       return res
         .status(500)
@@ -407,26 +583,39 @@ app.post(
   },
 )
 
-//update menu item (Admin only)
+// update menu item (Admin only)
 app.patch('/api/menu-items/:id', requireAuth, async (req, res) => {
   if (req.user?.role !== 'ADMIN') {
     return res.status(403).json({ error: 'Only admins can update menu items.' })
   }
 
   const { id } = req.params
-  const { name, priceCents, imageUrl, imagePlaceholderUrl, badges, isActive } =
-    req.body ?? {}
+  const {
+    name,
+    priceCents,
+    imageUrl,
+    imagePlaceholderUrl,
+    badges,
+    isActive,
+    options,
+  } = req.body ?? {}
 
   try {
-    const item = await updateMenuItem(id, {
+    const updates = {
       name,
       priceCents,
       imageUrl,
       imagePlaceholderUrl,
       badges,
       isActive,
-    })
-    res.json({ item })
+    }
+    const item = Array.isArray(options)
+      ? await updateMenuItemWithOptions(id, updates, options)
+      : await updateMenuItem(id, updates)
+    const updated = (await listMenuItems()).find(
+      (candidate) => candidate.id === id,
+    )
+    res.json({ item: updated ?? item })
   } catch (error: any) {
     console.error('Update menu item error: ', error)
     res
@@ -435,10 +624,43 @@ app.patch('/api/menu-items/:id', requireAuth, async (req, res) => {
   }
 })
 
+app.patch(
+  '/api/inventory/active/options/:optionChoiceId',
+  requireAuth,
+  async (req, res) => {
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'OWNER') {
+      return res
+        .status(403)
+        .json({ error: 'Only owners and admins can update inventory.' })
+    }
+    try {
+      const result = await updateActiveOptionInventory({
+        optionChoiceId: req.params.optionChoiceId,
+        ...(Object.prototype.hasOwnProperty.call(
+          req.body ?? {},
+          'inventoryLimit',
+        )
+          ? { inventoryLimit: req.body.inventoryLimit }
+          : {}),
+        ...(Object.prototype.hasOwnProperty.call(req.body ?? {}, 'isSoldOut')
+          ? { isSoldOut: req.body.isSoldOut }
+          : {}),
+      })
+      res.json(result)
+    } catch (error: any) {
+      res
+        .status(400)
+        .json({ error: error?.message ?? 'Failed to update option inventory.' })
+    }
+  },
+)
+
 // reorder menu items (Admin only)
 app.post('/api/menu-items/reorder', requireAuth, async (req, res) => {
   if (req.user?.role !== 'ADMIN') {
-    return res.status(403).json({ error: 'Only admins can reorder menu items.' })
+    return res
+      .status(403)
+      .json({ error: 'Only admins can reorder menu items.' })
   }
   const { ids } = req.body ?? {}
   if (!Array.isArray(ids) || ids.some((id: any) => typeof id !== 'string')) {
@@ -453,7 +675,7 @@ app.post('/api/menu-items/reorder', requireAuth, async (req, res) => {
   }
 })
 
-//delete menu item (Admin only)
+// delete menu item (Admin only)
 app.delete('/api/menu-items/:id', requireAuth, async (req, res) => {
   if (req.user?.role !== 'ADMIN') {
     return res.status(403).json({ error: 'Only admins can delete menu items.' })
@@ -521,10 +743,92 @@ app.patch('/api/orders/:id/status', requireAuth, async (req, res) => {
     console.error('Update order status error: ', error)
     const message = error?.message ?? 'Failed to update order.'
     const statusCode =
-      message.includes('not found') || message.includes('Invalid')
-        ? 400
-        : 400
+      message.includes('not found') || message.includes('Invalid') ? 400 : 400
     res.status(statusCode).json({ error: message })
+  }
+})
+
+app.patch('/api/orders/:id', requireAuth, async (req, res) => {
+  const { id } = req.params
+  const { version, reason, items } = req.body ?? {}
+  try {
+    const order = await correctOrder({
+      orderId: id,
+      version,
+      reason: typeof reason === 'string' ? reason : '',
+      items,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+    })
+    res.json({ order })
+  } catch (error: any) {
+    console.error('Correct order error: ', error)
+    if (error instanceof OrderConflictError) {
+      return res.status(409).json({ error: error.message })
+    }
+    if (error instanceof OrderAvailabilityError) {
+      return res.status(409).json({
+        error: error.message,
+        availability: error.availability,
+      })
+    }
+    const message = error?.message ?? 'Failed to correct order.'
+    res
+      .status(message.includes('not found') ? 404 : 400)
+      .json({ error: message })
+  }
+})
+
+app.post('/api/orders/:id/cancel', requireAuth, async (req, res) => {
+  const { id } = req.params
+  const { version, reason } = req.body ?? {}
+  try {
+    const order = await cancelOrder({
+      orderId: id,
+      version,
+      reason: typeof reason === 'string' ? reason : '',
+      userId: req.user!.id,
+      userRole: req.user!.role,
+    })
+    res.json({ order })
+  } catch (error: any) {
+    console.error('Cancel order error: ', error)
+    const message = error?.message ?? 'Failed to cancel order.'
+    const status = error instanceof OrderConflictError ? 409 : 400
+    res.status(status).json({ error: message })
+  }
+})
+
+app.post('/api/orders/:id/refunds/retry', requireAuth, async (req, res) => {
+  if (req.user?.role !== 'OWNER' && req.user?.role !== 'ADMIN') {
+    return res
+      .status(403)
+      .json({ error: 'Only owners and admins can retry refunds.' })
+  }
+  try {
+    await retryOrderRefunds({
+      orderId: req.params.id,
+      requestedByUserId: req.user.id,
+    })
+    const order = await getPublicOrder(req.params.id)
+    return res.json({ order })
+  } catch (error: any) {
+    console.error('Retry order refund error: ', error)
+    return res
+      .status(400)
+      .json({ error: error?.message ?? 'Failed to retry the refund.' })
+  }
+})
+
+app.get('/api/orders/:id/events', requireAuth, async (req, res) => {
+  try {
+    const events = await listOrderEvents(req.params.id)
+    res.json({ events })
+  } catch (error: any) {
+    console.error('List order events error: ', error)
+    res
+      .status(400)
+      .json({ error: error?.message ?? 'Failed to load order history.' })
   }
 })
 

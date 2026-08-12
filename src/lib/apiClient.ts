@@ -31,16 +31,41 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     let message = `Request failed with ${res.status}`
+    let data: any = null
     try {
-      const data = await res.json()
-      if (data?.error) message = data.error
+      data = await res.json()
     } catch {}
+    if (data?.error) message = data.error
     const error: any = new Error(message)
     error.status = res.status
+    error.data = data
     throw error
   }
 
   return res.json()
+}
+
+async function download(path: string, filename: string) {
+  const token = getAuthToken()
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+  if (!res.ok) {
+    let message = `Download failed with ${res.status}`
+    try {
+      const data = await res.json()
+      if (data?.error) message = data.error
+    } catch {}
+    throw new Error(message)
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
 }
 
 export const api = {
@@ -72,7 +97,33 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     }),
-  listSessions: () => request<{ sessions: any[] }>('/api/sessions'),
+  listSessions: () => request<{ sessions: Array<any> }>('/api/sessions'),
+  getSessionWaitEstimate: (sessionId: string) =>
+    request<{ estimate: any }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/wait-estimate`,
+    ),
+  updateSessionWaitEstimate: (
+    sessionId: string,
+    input: {
+      mode: 'AUTO' | 'MANUAL' | 'HIDDEN'
+      manualMinMinutes: number | null
+      manualMaxMinutes: number | null
+      parallelCapacity: number
+    },
+  ) =>
+    request<{ estimate: any }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/wait-estimate`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    ),
+  getSessionAnalytics: (sessionId: string) =>
+    request<{ analytics: any }>(
+      `/api/analytics/sessions/${encodeURIComponent(sessionId)}/summary`,
+    ),
+  downloadSessionAnalyticsCsv: (sessionId: string, filename: string) =>
+    download(
+      `/api/analytics/sessions/${encodeURIComponent(sessionId)}.csv`,
+      filename,
+    ),
   createSession: (name: string) =>
     request<{ session: any }>('/api/sessions', {
       method: 'POST',
@@ -86,12 +137,25 @@ export const api = {
     request<{ session: any }>(`/api/sessions/${id}/close`, {
       method: 'POST',
     }),
+  getActiveInventory: () =>
+    request<{ session: any; items: Array<any> }>('/api/inventory/active'),
+  updateActiveInventory: (
+    menuItemId: string,
+    updates: { inventoryLimit?: number | null; isSoldOut?: boolean },
+  ) =>
+    request<{ sessionId: string; item: any }>(
+      `/api/inventory/active/${menuItemId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      },
+    ),
   createInvite: (role: string) =>
     request<{ invite: any }>('/api/invites', {
       method: 'POST',
       body: JSON.stringify({ role }),
     }),
-  listMenuItems: () => request<{ items: any[] }>('/api/menu-items'),
+  listMenuItems: () => request<{ items: Array<any> }>('/api/menu-items'),
   createMenuItem: (input: {
     name: string
     priceCents: number
@@ -113,9 +177,18 @@ export const api = {
       imagePlaceholderUrl?: string | null
       badges?: Array<{ label: string; color?: string }>
       isActive: boolean
+      options: Array<any>
     }>,
   ) =>
     request<{ item: any }>(`/api/menu-items/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }),
+  updateActiveOptionInventory: (
+    optionChoiceId: string,
+    updates: { inventoryLimit?: number | null; isSoldOut?: boolean },
+  ) =>
+    request<{ ok: true }>(`/api/inventory/active/options/${optionChoiceId}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
     }),
@@ -127,9 +200,14 @@ export const api = {
     request<{ open: boolean; session: any | null }>(
       '/api/public/active-session',
     ),
-  getPublicMenuItems: () => request<{ items: any[] }>('/api/public/menu-items'),
-  refreshPublicCart: (items: any[]) =>
-    request<{ active: any[]; removed: any[] }>('/api/public/cart/refresh', {
+  getPublicMenuItems: () =>
+    request<{ items: Array<any> }>('/api/public/menu-items'),
+  refreshPublicCart: (items: Array<any>) =>
+    request<{
+      active: Array<any>
+      removed: Array<any>
+      adjusted: Array<any>
+    }>('/api/public/cart/refresh', {
       method: 'POST',
       body: JSON.stringify({ items }),
     }),
@@ -137,21 +215,52 @@ export const api = {
     customerName: string
     customerPhone?: string | null
     smsOptIn: boolean
-    items: Array<{ menuItemId: string; quantity: number; name?: string }>
+    tipSelection?:
+      | 'NONE'
+      | 'PERCENT_15'
+      | 'PERCENT_20'
+      | 'PERCENT_25'
+      | 'CUSTOM'
+    customTipCents?: number | null
+    items: Array<{
+      cartLineId: string
+      menuItemId: string
+      quantity: number
+      name?: string
+      selectedOptionChoiceIds?: Array<string>
+      specialInstructions?: string
+    }>
   }) =>
-    request<{ order: any; removed: any[]; trackingJwt: string }>(
-      '/api/public/orders',
-      {
-        method: 'POST',
-        body: JSON.stringify(input),
-      },
+    request<{
+      order: any
+      removed: Array<any>
+      adjusted: Array<any>
+      trackingJwt: string
+      paymentRequired: boolean
+      checkoutUrl: string | null
+    }>('/api/public/orders', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  resumePublicOrderPayment: (id: string) =>
+    request<{
+      paymentStatus: string
+      checkoutUrl: string | null
+      expiresAt: string | null
+    }>(`/api/public/orders/${id}/payment/resume`, { method: 'POST' }),
+  cancelPublicOrderPayment: (id: string) =>
+    request<{ paymentStatus: string }>(
+      `/api/public/orders/${id}/payment/cancel`,
+      { method: 'POST' },
     ),
   getPublicOrder: (id: string) =>
     request<{ order: any; trackingJwt: string }>(`/api/public/orders/${id}`),
-  listActiveOrders: (status?: 'PENDING' | 'MAKING' | 'READY' | 'ALL') => {
+  listActiveOrders: (
+    status?: 'PENDING' | 'MAKING' | 'READY' | 'CANCELLED' | 'ALL',
+  ) => {
     const query =
       status && status !== 'ALL' ? `?status=${encodeURIComponent(status)}` : ''
-    return request<{ orders: any[] }>(`/api/orders/active${query}`)
+    return request<{ orders: Array<any> }>(`/api/orders/active${query}`)
   },
   assignOrderToMe: (orderId: string) =>
     request<{ order: any }>(`/api/orders/${orderId}/assign`, {
@@ -166,9 +275,38 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }),
+  correctOrder: (
+    orderId: string,
+    input: {
+      version: number
+      reason: string
+      items: Array<{
+        lineId?: string
+        menuItemId: string
+        quantity: number
+        selectedOptionChoiceIds: Array<string>
+        specialInstructions: string
+      }>
+    },
+  ) =>
+    request<{ order: any }>(`/api/orders/${orderId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  cancelOrder: (orderId: string, version: number, reason: string) =>
+    request<{ order: any }>(`/api/orders/${orderId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ version, reason }),
+    }),
+  retryOrderRefund: (orderId: string) =>
+    request<{ order: any }>(`/api/orders/${orderId}/refunds/retry`, {
+      method: 'POST',
+    }),
+  listOrderEvents: (orderId: string) =>
+    request<{ events: Array<any> }>(`/api/orders/${orderId}/events`),
   health: () => request<{ ok: boolean }>('/api/health'),
-  reorderMenuItems: (ids: string[]) =>
-    request<{ items: any[] }>('/api/menu-items/reorder', {
+  reorderMenuItems: (ids: Array<string>) =>
+    request<{ items: Array<any> }>('/api/menu-items/reorder', {
       method: 'POST',
       body: JSON.stringify({ ids }),
     }),

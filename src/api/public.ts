@@ -5,29 +5,38 @@ import {
   getActiveSession,
   refreshCartItems,
 } from './menuItem'
-import { createPublicOrder, getPublicOrder } from './order'
+import {
+  OrderAvailabilityError,
+  createPublicOrder,
+  getPublicOrder,
+} from './order'
+import { cancelPendingCheckout, getPendingCheckoutSession } from './payments'
+import { getSessionWaitEstimate } from './waitEstimate'
 import { SmsConsentValidationError, prepareSmsConsent } from '@/lib/smsConsent'
+import { CheckoutTipValidationError } from '@/lib/checkoutTip'
 
 export const publicRouter = express.Router()
 
-//Get /api/public/active-session
+// Get /api/public/active-session
 publicRouter.get('/active-session', async (_req, res) => {
   try {
     const session = await getActiveSession()
-    res.json({ open: true, session })
+    const estimatedWait = await getSessionWaitEstimate(session.id)
+    res.json({ open: true, session: { ...session, estimatedWait } })
   } catch (error: any) {
     console.error('List menu error: ', error)
     res.status(500).json({ error: 'Failed to fetch active session.' })
   }
 })
 
-//Get /api/public/menu-items
+// Get /api/public/menu-items
 publicRouter.get('/menu-items', async (_req, res) => {
   try {
     const session = await getActiveSession()
+    const estimatedWait = await getSessionWaitEstimate(session.id)
     const items = await getActiveMenuItems()
-    res.set('Cache-Control', 'public, max-age=60')
-    return res.json({ session, items })
+    res.set('Cache-Control', 'no-store')
+    return res.json({ session: { ...session, estimatedWait }, items })
   } catch (error: any) {
     console.error(error)
     return res.status(500).json({ error: 'Failed to load menu items.' })
@@ -44,6 +53,10 @@ publicRouter.post('/cart/refresh', async (req, res) => {
 
   const normalized = items
     .map((item: any) => ({
+      cartLineId:
+        item && typeof item.cartLineId === 'string'
+          ? item.cartLineId
+          : item?.menuItemId,
       menuItemId:
         item && typeof item.menuItemId === 'string' ? item.menuItemId : null,
       quantity:
@@ -51,16 +64,32 @@ publicRouter.post('/cart/refresh', async (req, res) => {
           ? Math.floor(item.quantity)
           : Number.NaN,
       name: item && typeof item.name === 'string' ? item.name : undefined,
+      selectedOptionChoiceIds: Array.isArray(item?.selectedOptionChoiceIds)
+        ? item.selectedOptionChoiceIds.filter(
+            (id: any) => typeof id === 'string',
+          )
+        : [],
+      specialInstructions:
+        typeof item?.specialInstructions === 'string'
+          ? item.specialInstructions.slice(0, 200)
+          : '',
     }))
     .filter(
       (item) =>
         !!item.menuItemId &&
         Number.isFinite(item.quantity) &&
         item.quantity > 0,
-    ) as Array<{ menuItemId: string; quantity: number; name?: string }>
+    ) as Array<{
+    cartLineId: string
+    menuItemId: string
+    quantity: number
+    name?: string
+    selectedOptionChoiceIds: Array<string>
+    specialInstructions: string
+  }>
 
   if (normalized.length === 0) {
-    return res.json({ active: [], removed: [] })
+    return res.json({ active: [], removed: [], adjusted: [] })
   }
 
   try {
@@ -74,7 +103,14 @@ publicRouter.post('/cart/refresh', async (req, res) => {
 
 // POST /api/public/orders
 publicRouter.post('/orders', async (req, res) => {
-  const { customerName, customerPhone, smsOptIn, items } = req.body ?? {}
+  const {
+    customerName,
+    customerPhone,
+    smsOptIn,
+    tipSelection,
+    customTipCents,
+    items,
+  } = req.body ?? {}
 
   if (!customerName || typeof customerName !== 'string') {
     return res.status(400).json({ error: 'Customer name is required.' })
@@ -96,6 +132,10 @@ publicRouter.post('/orders', async (req, res) => {
 
   const normalizedItems = items
     .map((item: any) => ({
+      cartLineId:
+        item && typeof item.cartLineId === 'string'
+          ? item.cartLineId
+          : item?.menuItemId,
       menuItemId:
         item && typeof item.menuItemId === 'string' ? item.menuItemId : null,
       quantity:
@@ -103,36 +143,82 @@ publicRouter.post('/orders', async (req, res) => {
           ? Math.floor(item.quantity)
           : Number.NaN,
       name: item && typeof item.name === 'string' ? item.name : undefined,
+      selectedOptionChoiceIds: Array.isArray(item?.selectedOptionChoiceIds)
+        ? item.selectedOptionChoiceIds.filter(
+            (id: any) => typeof id === 'string',
+          )
+        : [],
+      specialInstructions:
+        typeof item?.specialInstructions === 'string'
+          ? item.specialInstructions.slice(0, 200)
+          : '',
     }))
     .filter(
       (item) =>
         !!item.menuItemId &&
         Number.isFinite(item.quantity) &&
         item.quantity > 0,
-    ) as Array<{ menuItemId: string; quantity: number; name?: string }>
+    ) as Array<{
+    cartLineId: string
+    menuItemId: string
+    quantity: number
+    name?: string
+    selectedOptionChoiceIds: Array<string>
+    specialInstructions: string
+  }>
 
   if (normalizedItems.length === 0) {
     return res.status(400).json({ error: 'Cart items are required.' })
   }
 
   try {
-    const { order, removed, trackingJwt } = await createPublicOrder({
+    const result = await createPublicOrder({
       customerName: customerName.trim(),
       ...smsConsent,
+      tipSelection: typeof tipSelection === 'string' ? tipSelection : null,
+      customTipCents:
+        typeof customTipCents === 'number' ? customTipCents : null,
       items: normalizedItems,
     })
 
-    if (!order) {
-      return res.status(400).json({
-        error: 'Some items are no longer available. Please refresh your cart.',
-        removed,
+    return res.status(201).json(result)
+  } catch (error: any) {
+    if (error instanceof OrderAvailabilityError) {
+      return res.status(409).json({
+        error:
+          'Availability changed while your order was submitted. Review your updated cart and try again.',
+        ...error.availability,
       })
     }
-
-    return res.status(201).json({ order, removed, trackingJwt })
-  } catch (error: any) {
+    if (error instanceof CheckoutTipValidationError) {
+      return res.status(400).json({ error: error.message })
+    }
     console.error('Create public order error: ', error)
     return res.status(500).json({ error: 'Failed to create order.' })
+  }
+})
+
+// POST /api/public/orders/:id/payment/resume
+publicRouter.post('/orders/:id/payment/resume', async (req, res) => {
+  try {
+    const payment = await getPendingCheckoutSession(req.params.id)
+    return res.json(payment)
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to resume payment.'
+    const status = message.includes('not found') ? 404 : 400
+    return res.status(status).json({ error: message })
+  }
+})
+
+// POST /api/public/orders/:id/payment/cancel
+publicRouter.post('/orders/:id/payment/cancel', async (req, res) => {
+  try {
+    const payment = await cancelPendingCheckout(req.params.id)
+    return res.json(payment)
+  } catch (error: any) {
+    const message = error?.message ?? 'Failed to cancel payment.'
+    const status = message.includes('not found') ? 404 : 400
+    return res.status(status).json({ error: message })
   }
 })
 

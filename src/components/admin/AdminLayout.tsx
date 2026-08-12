@@ -1,13 +1,13 @@
+import { Link, useRouter } from '@tanstack/react-router'
+import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { setAuthToken } from '@/lib/apiClient'
-import { Link, useRouter } from '@tanstack/react-router'
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTrigger,
 } from '@/components/ui/sheet'
-import { Menu } from 'lucide-react'
 
 type AdminLayoutProps = {
   user: { email: string; role?: string } | null
@@ -63,6 +63,15 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
                       onClick={() => router.navigate({ to: '/admin/menu' })}
                     >
                       Menu
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="justify-start"
+                      onClick={() =>
+                        router.navigate({ to: '/admin/analytics' })
+                      }
+                    >
+                      Analytics
                     </Button>
                   </>
                 )}

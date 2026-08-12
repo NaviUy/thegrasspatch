@@ -1,10 +1,15 @@
 import { Suspense } from 'react'
-import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
+import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import { api } from '@/lib/apiClient'
 import { Button } from '@/components/ui/button'
 import { ProductCard } from '@/components/ProductCard'
-import { useCart } from '@/hooks/useCart'
-import { toast } from 'sonner'
+import { useCart, type CartOption } from '@/hooks/useCart'
+import {
+  CustomizeItemDialog,
+  type MenuOptionGroup,
+} from '@/components/CustomizeItemDialog'
+import { formatWaitEstimate } from '@/lib/waitEstimate'
 
 export const Route = createFileRoute('/menu/')({
   loader: async () => {
@@ -46,36 +51,78 @@ type MenuItem = {
   imagePlaceholderUrl?: string | null
   badges?: Array<{ label: string; color: string }> | null
   isActive: boolean
+  isSoldOut: boolean
+  isLimitedAvailability: boolean
+  availableQuantity: number | null
+  options: Array<MenuOptionGroup>
 }
 
 function RouteComponent() {
   const router = useRouter()
-  const { open, session, items } = Route.useLoaderData() as {
-    open: boolean
-    session: { name: string } | null
-    items: MenuItem[]
-  }
-  const { items: cart, updateQuantity, totalItems, totalCents } = useCart()
+  const { open, session, items } = Route.useLoaderData()
+  const { items: cart, addConfiguredItem, totalItems, totalCents } = useCart()
+  const waitEstimate = formatWaitEstimate(session?.estimatedWait)
 
-  //cart helper
-  const adjustQuantity = (item: MenuItem, delta: number) => {
-    updateQuantity({
+  const addToCart = (
+    item: MenuItem,
+    configuration: {
+      selectedOptions: Array<CartOption>
+      specialInstructions: string
+      priceCents: number
+    },
+  ) => {
+    const itemQuantity = cart
+      .filter((line) => line.menuItemId === item.id)
+      .reduce((sum, line) => sum + line.quantity, 0)
+    if (
+      item.availableQuantity !== null &&
+      itemQuantity >= item.availableQuantity
+    ) {
+      toast.error('No more are currently available.')
+      return false
+    }
+
+    for (const option of configuration.selectedOptions) {
+      const choice = item.options
+        .flatMap((group) => group.choices)
+        .find((candidate) => candidate.id === option.optionChoiceId)
+      const quantityInCart = cart.reduce(
+        (sum, line) =>
+          line.selectedOptions.some(
+            (selected) => selected.optionChoiceId === option.optionChoiceId,
+          )
+            ? sum + line.quantity
+            : sum,
+        0,
+      )
+      if (
+        choice?.remainingQuantity !== null &&
+        choice?.remainingQuantity !== undefined &&
+        quantityInCart >= choice.remainingQuantity
+      ) {
+        toast.error(`${choice.name} is no longer available for another item.`)
+        return false
+      }
+    }
+
+    addConfiguredItem({
       menuItemId: item.id,
       name: item.name,
-      priceCents: item.priceCents,
+      basePriceCents: item.priceCents,
+      priceCents: configuration.priceCents,
       imageUrl: item.imageUrl ?? null,
-      // cart currently ignores placeholder; keeping API unchanged
-      delta,
+      availableQuantity: item.availableQuantity,
+      selectedOptions: configuration.selectedOptions,
+      specialInstructions: configuration.specialInstructions,
     })
-    if (delta > 0) {
-      toast.success(`Added ${item.name} to cart`)
-    } else if (delta < 0) {
-      toast.success(`Removed ${item.name} from cart`)
-    }
+    toast.success(`Added ${item.name} to cart`)
+    return true
   }
 
   const getQuantity = (itemId: string) =>
-    cart.find((c) => c.menuItemId === itemId)?.quantity ?? 0
+    cart
+      .filter((line) => line.menuItemId === itemId)
+      .reduce((sum, line) => sum + line.quantity, 0)
 
   if (!open) {
     return (
@@ -123,11 +170,21 @@ function RouteComponent() {
       </header>
 
       <section className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 space-y-4">
+        {waitEstimate && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-sm font-semibold text-emerald-900">
+              Estimated wait: {waitEstimate}
+            </p>
+            <p className="text-xs text-emerald-700">
+              This is an estimate for a new order; actual timing may vary.
+            </p>
+          </div>
+        )}
         <div className="flex items-baseline justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Menu</h2>
             <p className="text-sm text-slate-500">
-              Tap + to add drinks to your order.
+              Choose an item to customize and add to your order.
             </p>
           </div>
           {totalItems > 0 && (
@@ -155,25 +212,25 @@ function RouteComponent() {
                   badges={item.badges ?? []}
                   className="w-full max-w-xs"
                 >
-                  <div className="ml-auto flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => adjustQuantity(item, -1)}
-                      disabled={qty === 0}
-                    >
-                      -
-                    </Button>
-                    <span className="w-6 text-center text-sm">{qty}</span>
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="icon"
-                      onClick={() => adjustQuantity(item, +1)}
-                    >
-                      +
-                    </Button>
+                  <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                    {item.isSoldOut ? (
+                      <span className="w-full text-right text-xs font-semibold text-red-700">
+                        Sold out
+                      </span>
+                    ) : item.isLimitedAvailability ? (
+                      <span className="w-full text-right text-xs font-semibold text-amber-700">
+                        Limited availability
+                      </span>
+                    ) : null}
+                    {qty > 0 && (
+                      <span className="text-sm text-slate-600">
+                        {qty} in cart
+                      </span>
+                    )}
+                    <CustomizeItemDialog
+                      item={item}
+                      onAdd={(configuration) => addToCart(item, configuration)}
+                    />
                   </div>
                 </ProductCard>
               )

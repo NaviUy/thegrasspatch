@@ -4,6 +4,11 @@ import { api } from '@/lib/apiClient'
 type PublicSession = {
   id: string
   name: string
+  estimatedWait?: {
+    minMinutes: number | null
+    maxMinutes: number | null
+    source: 'AUTO' | 'MANUAL' | null
+  }
 }
 
 type UseActiveSessionResult = {

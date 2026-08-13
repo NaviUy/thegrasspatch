@@ -134,6 +134,13 @@
       "when": 1786551748230,
       "tag": "0018_enable_rls_new_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786658544606,
+      "tag": "0019_add_payment_method_details",
+      "breakpoints": true
     }
   ]
 }

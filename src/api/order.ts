@@ -428,6 +428,9 @@ export async function getPublicOrder(orderId: string) {
       .select({
         id: schema.orderPayments.id,
         tipAmountCents: schema.orderPayments.tipAmountCents,
+        paymentMethodBrand: schema.orderPayments.paymentMethodBrand,
+        paymentMethodLast4: schema.orderPayments.paymentMethodLast4,
+        paymentMethodWallet: schema.orderPayments.paymentMethodWallet,
       })
       .from(schema.orderPayments)
       .where(
@@ -497,6 +500,9 @@ export async function getPublicOrder(orderId: string) {
     ...order,
     ...paymentReconciliation,
     pendingCheckoutTipCents: checkoutPayment?.tipAmountCents ?? 0,
+    paymentMethodBrand: checkoutPayment?.paymentMethodBrand ?? null,
+    paymentMethodLast4: checkoutPayment?.paymentMethodLast4 ?? null,
+    paymentMethodWallet: checkoutPayment?.paymentMethodWallet ?? null,
     items: items.map((item) => ({
       ...item,
       selectedOptions: selectedOptions.filter(

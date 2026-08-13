@@ -12,6 +12,7 @@ import {
   calculateCancellationRefundRequest,
   calculateCorrectionRefundRequest,
 } from '@/lib/paymentReconciliation'
+import { paymentMethodSummaryFromCharge } from '@/lib/paymentMethod'
 
 const CHECKOUT_EXPIRATION_SECONDS = 30 * 60
 
@@ -189,7 +190,7 @@ export async function processCompletedCheckoutSession(
 ) {
   if (session.payment_status !== 'paid') return
 
-  const orderId = await db.transaction(async (trx) => {
+  const completedPayment = await db.transaction(async (trx) => {
     const payment = await findCheckoutPayment(session, trx)
     if (!payment || payment.kind !== 'ORDER_CHECKOUT') return null
 
@@ -198,7 +199,9 @@ export async function processCompletedCheckoutSession(
     )
     const lockedPayment = await findCheckoutPayment(session, trx)
     if (!lockedPayment) return null
-    if (lockedPayment.status === 'SUCCEEDED') return lockedPayment.orderId
+    if (lockedPayment.status === 'SUCCEEDED') {
+      return { orderId: lockedPayment.orderId, paymentId: lockedPayment.id }
+    }
 
     if (
       session.amount_total !== lockedPayment.amountCents ||
@@ -231,13 +234,48 @@ export async function processCompletedCheckoutSession(
       })
       .where(eq(schema.orders.id, lockedPayment.orderId))
 
-    return lockedPayment.orderId
+    return { orderId: lockedPayment.orderId, paymentId: lockedPayment.id }
   })
 
-  if (!orderId) return
+  if (!completedPayment) return
+
+  const paymentIntentId = stripeObjectId(session.payment_intent)
+  if (paymentIntentId) {
+    try {
+      const stripe = getStripeClient()
+      const paymentIntent = await stripe.paymentIntents.retrieve(
+        paymentIntentId,
+        { expand: ['latest_charge'] },
+      )
+      const latestCharge = paymentIntent.latest_charge
+      const charge =
+        typeof latestCharge === 'string'
+          ? await stripe.charges.retrieve(latestCharge)
+          : latestCharge
+      if (charge) {
+        const method = paymentMethodSummaryFromCharge(charge)
+        await db
+          .update(schema.orderPayments)
+          .set({
+            providerChargeId: charge.id,
+            paymentMethodBrand: method.brand,
+            paymentMethodLast4: method.last4,
+            paymentMethodWallet: method.wallet,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.orderPayments.id, completedPayment.paymentId))
+      }
+    } catch (error) {
+      // Payment confirmation must not fail if optional display details cannot
+      // be retrieved. A later duplicate webhook can safely backfill them.
+      console.error('Stripe payment method capture failed:', error)
+    }
+  }
 
   try {
-    const smsResult = await sendOrderCreatedNotification(orderId)
+    const smsResult = await sendOrderCreatedNotification(
+      completedPayment.orderId,
+    )
     if (smsResult.outcome === 'failed') {
       console.error('Order-created SMS failed:', smsResult.reason)
     }

@@ -302,6 +302,9 @@ export const orderPayments = pgTable(
       length: 255,
     }),
     providerChargeId: varchar('provider_charge_id', { length: 255 }),
+    paymentMethodBrand: varchar('payment_method_brand', { length: 32 }),
+    paymentMethodLast4: varchar('payment_method_last4', { length: 4 }),
+    paymentMethodWallet: varchar('payment_method_wallet', { length: 32 }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     succeededAt: timestamp('succeeded_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })

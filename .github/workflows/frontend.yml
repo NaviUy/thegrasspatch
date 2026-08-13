@@ -15,6 +15,7 @@ on:
       - 'src/lib/checkoutTip.ts'
       - 'src/lib/customerCancellation.ts'
       - 'src/lib/orderNumber.ts'
+      - 'src/lib/paymentMethod.ts'
       - 'src/lib/supabaseClient.ts'
       - 'src/lib/utils.ts'
       - 'src/lib/waitEstimate.ts'

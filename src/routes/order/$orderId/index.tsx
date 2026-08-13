@@ -14,6 +14,7 @@ import {
 import { supabase } from '@/lib/supabaseClient'
 import { canCustomerCancelOrder } from '@/lib/customerCancellation'
 import { formatOrderLabel } from '@/lib/orderNumber'
+import { formatPaymentMethod } from '@/lib/paymentMethod'
 import { clearStoredCart } from '@/hooks/useCart'
 
 type OrderItem = {
@@ -58,6 +59,9 @@ type Order = {
   refundOutstandingCents?: number
   refundableOnCancelCents?: number
   refundProgressStatus?: 'NONE' | 'PENDING' | 'FAILED'
+  paymentMethodBrand?: string | null
+  paymentMethodLast4?: string | null
+  paymentMethodWallet?: string | null
   createdAt?: string
   estimatedWaitMinMinutes?: number | null
   estimatedWaitMaxMinutes?: number | null
@@ -316,6 +320,13 @@ function RouteComponent() {
     order?.paymentStatus === 'PARTIALLY_REFUNDED' ||
     order?.paymentStatus === 'REFUNDED'
   const customerCanCancel = order ? canCustomerCancelOrder(order) : false
+  const paymentMethod = order
+    ? formatPaymentMethod({
+        brand: order.paymentMethodBrand,
+        last4: order.paymentMethodLast4,
+        wallet: order.paymentMethodWallet,
+      })
+    : null
 
   useEffect(() => {
     if (!customerCanCancel) setCancelDialogOpen(false)
@@ -840,6 +851,14 @@ function RouteComponent() {
                   {order.paymentStatus.replaceAll('_', ' ')}
                 </span>
               </div>
+              {paymentMethod && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-600">Payment method</span>
+                  <span className="font-semibold text-slate-900">
+                    {paymentMethod}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-600">Placed at</span>
                 <span className="font-semibold text-slate-900">
@@ -891,7 +910,7 @@ function RouteComponent() {
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 flex items-end justify-between gap-4">
               <div className="w-full max-w-xs space-y-1 text-sm">
                 <div className="flex justify-between text-slate-600">
-                  <span>Food</span>
+                  <span>Subtotal</span>
                   <span>${formatDollars(order.totalPriceCents)}</span>
                 </div>
                 {displayedCheckoutTipCents > 0 && (

@@ -1,6 +1,6 @@
 {
-  "id": "8fd94461-1cf7-4db2-beba-8128fcd1eb3a",
-  "prevId": "69a32ca2-6f14-46db-97b6-d078c7bb4c90",
+  "id": "49b75d22-c5f3-4402-8d2c-dbff6c41f8c8",
+  "prevId": "8fd94461-1cf7-4db2-beba-8128fcd1eb3a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -64,38 +64,28 @@
         "invite_tokens_created_by_user_id_users_id_fk": {
           "name": "invite_tokens_created_by_user_id_users_id_fk",
           "tableFrom": "invite_tokens",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "columnsFrom": ["created_by_user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "invite_tokens_used_by_user_id_users_id_fk": {
           "name": "invite_tokens_used_by_user_id_users_id_fk",
           "tableFrom": "invite_tokens",
-          "columnsFrom": [
-            "used_by_user_id"
-          ],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "columnsFrom": ["used_by_user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "invite_tokens_code_unique": {
           "name": "invite_tokens_code_unique",
-          "columns": [
-            "code"
-          ],
-          "nullsNotDistinct": false
+          "nullsNotDistinct": false,
+          "columns": ["code"]
         }
       },
       "policies": {},
@@ -166,15 +156,11 @@
         "menu_item_option_choices_group_id_menu_item_option_groups_id_fk": {
           "name": "menu_item_option_choices_group_id_menu_item_option_groups_id_fk",
           "tableFrom": "menu_item_option_choices",
-          "columnsFrom": [
-            "group_id"
-          ],
           "tableTo": "menu_item_option_groups",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -264,15 +250,11 @@
         "menu_item_option_groups_menu_item_id_menu_items_id_fk": {
           "name": "menu_item_option_groups_menu_item_id_menu_items_id_fk",
           "tableFrom": "menu_item_option_groups",
-          "columnsFrom": [
-            "menu_item_id"
-          ],
           "tableTo": "menu_items",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["menu_item_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -416,28 +398,20 @@
         "order_events_order_id_orders_id_fk": {
           "name": "order_events_order_id_orders_id_fk",
           "tableFrom": "order_events",
-          "columnsFrom": [
-            "order_id"
-          ],
           "tableTo": "orders",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "order_events_actor_user_id_users_id_fk": {
           "name": "order_events_actor_user_id_users_id_fk",
           "tableFrom": "order_events",
-          "columnsFrom": [
-            "actor_user_id"
-          ],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "columnsFrom": ["actor_user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -500,41 +474,29 @@
         "order_item_options_order_item_id_order_items_id_fk": {
           "name": "order_item_options_order_item_id_order_items_id_fk",
           "tableFrom": "order_item_options",
-          "columnsFrom": [
-            "order_item_id"
-          ],
           "tableTo": "order_items",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["order_item_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "order_item_options_option_group_id_menu_item_option_groups_id_fk": {
           "name": "order_item_options_option_group_id_menu_item_option_groups_id_fk",
           "tableFrom": "order_item_options",
-          "columnsFrom": [
-            "option_group_id"
-          ],
           "tableTo": "menu_item_option_groups",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "columnsFrom": ["option_group_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "order_item_options_option_choice_id_menu_item_option_choices_id_fk": {
           "name": "order_item_options_option_choice_id_menu_item_option_choices_id_fk",
           "tableFrom": "order_item_options",
-          "columnsFrom": [
-            "option_choice_id"
-          ],
           "tableTo": "menu_item_option_choices",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "columnsFrom": ["option_choice_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -603,28 +565,20 @@
         "order_items_order_id_orders_id_fk": {
           "name": "order_items_order_id_orders_id_fk",
           "tableFrom": "order_items",
-          "columnsFrom": [
-            "order_id"
-          ],
           "tableTo": "orders",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "order_items_menu_item_id_menu_items_id_fk": {
           "name": "order_items_menu_item_id_menu_items_id_fk",
           "tableFrom": "order_items",
-          "columnsFrom": [
-            "menu_item_id"
-          ],
           "tableTo": "menu_items",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "columnsFrom": ["menu_item_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -715,6 +669,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "payment_method_brand": {
+          "name": "payment_method_brand",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payment_method_last4": {
+          "name": "payment_method_last4",
+          "type": "varchar(4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payment_method_wallet": {
+          "name": "payment_method_wallet",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "expires_at": {
           "name": "expires_at",
           "type": "timestamp with time zone",
@@ -754,9 +726,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "order_payments_status_idx": {
           "name": "order_payments_status_idx",
@@ -769,9 +741,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "order_payments_provider_checkout_session_id_unique": {
           "name": "order_payments_provider_checkout_session_id_unique",
@@ -784,9 +756,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "order_payments_provider_payment_intent_id_unique": {
           "name": "order_payments_provider_payment_intent_id_unique",
@@ -799,24 +771,20 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "order_payments_order_id_orders_id_fk": {
           "name": "order_payments_order_id_orders_id_fk",
           "tableFrom": "order_payments",
-          "columnsFrom": [
-            "order_id"
-          ],
           "tableTo": "orders",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1060,50 +1028,38 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "orders_session_id_sessions_id_fk": {
           "name": "orders_session_id_sessions_id_fk",
           "tableFrom": "orders",
-          "columnsFrom": [
-            "session_id"
-          ],
           "tableTo": "sessions",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "orders_assigned_worker_id_users_id_fk": {
           "name": "orders_assigned_worker_id_users_id_fk",
           "tableFrom": "orders",
-          "columnsFrom": [
-            "assigned_worker_id"
-          ],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "columnsFrom": ["assigned_worker_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "orders_cancelled_by_user_id_users_id_fk": {
           "name": "orders_cancelled_by_user_id_users_id_fk",
           "tableFrom": "orders",
-          "columnsFrom": [
-            "cancelled_by_user_id"
-          ],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "columnsFrom": ["cancelled_by_user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1244,9 +1200,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "payment_refunds_status_idx": {
           "name": "payment_refunds_status_idx",
@@ -1259,54 +1215,42 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "payment_refunds_order_payment_id_order_payments_id_fk": {
           "name": "payment_refunds_order_payment_id_order_payments_id_fk",
           "tableFrom": "payment_refunds",
-          "columnsFrom": [
-            "order_payment_id"
-          ],
           "tableTo": "order_payments",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["order_payment_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "payment_refunds_requested_by_user_id_users_id_fk": {
           "name": "payment_refunds_requested_by_user_id_users_id_fk",
           "tableFrom": "payment_refunds",
-          "columnsFrom": [
-            "requested_by_user_id"
-          ],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "columnsFrom": ["requested_by_user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "payment_refunds_idempotency_key_unique": {
           "name": "payment_refunds_idempotency_key_unique",
-          "columns": [
-            "idempotency_key"
-          ],
-          "nullsNotDistinct": false
+          "nullsNotDistinct": false,
+          "columns": ["idempotency_key"]
         },
         "payment_refunds_provider_refund_id_unique": {
           "name": "payment_refunds_provider_refund_id_unique",
-          "columns": [
-            "provider_refund_id"
-          ],
-          "nullsNotDistinct": false
+          "nullsNotDistinct": false,
+          "columns": ["provider_refund_id"]
         }
       },
       "policies": {},
@@ -1363,37 +1307,26 @@
         "session_menu_items_session_id_sessions_id_fk": {
           "name": "session_menu_items_session_id_sessions_id_fk",
           "tableFrom": "session_menu_items",
-          "columnsFrom": [
-            "session_id"
-          ],
           "tableTo": "sessions",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "session_menu_items_menu_item_id_menu_items_id_fk": {
           "name": "session_menu_items_menu_item_id_menu_items_id_fk",
           "tableFrom": "session_menu_items",
-          "columnsFrom": [
-            "menu_item_id"
-          ],
           "tableTo": "menu_items",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["menu_item_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "session_menu_items_session_id_menu_item_id_pk": {
           "name": "session_menu_items_session_id_menu_item_id_pk",
-          "columns": [
-            "session_id",
-            "menu_item_id"
-          ]
+          "columns": ["session_id", "menu_item_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1441,37 +1374,26 @@
         "session_option_choices_session_id_sessions_id_fk": {
           "name": "session_option_choices_session_id_sessions_id_fk",
           "tableFrom": "session_option_choices",
-          "columnsFrom": [
-            "session_id"
-          ],
           "tableTo": "sessions",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "session_option_choices_option_choice_id_menu_item_option_choices_id_fk": {
           "name": "session_option_choices_option_choice_id_menu_item_option_choices_id_fk",
           "tableFrom": "session_option_choices",
-          "columnsFrom": [
-            "option_choice_id"
-          ],
           "tableTo": "menu_item_option_choices",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "columnsFrom": ["option_choice_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "session_option_choices_session_id_option_choice_id_pk": {
           "name": "session_option_choices_session_id_option_choice_id_pk",
-          "columns": [
-            "session_id",
-            "option_choice_id"
-          ]
+          "columns": ["session_id", "option_choice_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1615,12 +1537,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "source_message_id": {
+          "name": "source_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'SENT'"
+          "default": "'SENDING'"
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "sent_at": {
           "name": "sent_at",
@@ -1628,22 +1562,77 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "sms_events_order_type_unique": {
+          "name": "sms_events_order_type_unique",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sms_events_provider_message_id_unique": {
+          "name": "sms_events_provider_message_id_unique",
+          "columns": [
+            {
+              "expression": "provider_message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sms_events_source_message_id_unique": {
+          "name": "sms_events_source_message_id_unique",
+          "columns": [
+            {
+              "expression": "source_message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "sms_events_order_id_orders_id_fk": {
           "name": "sms_events_order_id_orders_id_fk",
           "tableFrom": "sms_events",
-          "columnsFrom": [
-            "order_id"
-          ],
           "tableTo": "orders",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1701,10 +1690,8 @@
       "uniqueConstraints": {
         "users_email_unique": {
           "name": "users_email_unique",
-          "columns": [
-            "email"
-          ],
-          "nullsNotDistinct": false
+          "nullsNotDistinct": false,
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -1714,10 +1701,10 @@
   },
   "enums": {},
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

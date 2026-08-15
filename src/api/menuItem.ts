@@ -1,4 +1,4 @@
-import { asc, desc, eq } from 'drizzle-orm'
+import { asc, desc, eq, sql } from 'drizzle-orm'
 import { ensureSessionInventoryRows, listSessionInventory } from './inventory'
 import { getOptionsForMenuItems, replaceMenuItemOptions } from './options'
 import type { OptionGroupInput } from './options'
@@ -29,6 +29,12 @@ export async function listMenuItems() {
 }
 
 export async function createMenuItem(input: NewMenuItemInput) {
+  const [positionResult] = await db
+    .select({
+      maxPosition: sql<number>`coalesce(max(${schema.menuItems.position}), 0)`,
+    })
+    .from(schema.menuItems)
+
   const [item] = await db
     .insert(schema.menuItems)
     .values({
@@ -37,7 +43,7 @@ export async function createMenuItem(input: NewMenuItemInput) {
       imageUrl: input.imageUrl ?? null,
       imagePlaceholderUrl: input.imagePlaceholderUrl ?? null,
       badges: input.badges ?? null,
-      position: input.position ?? Date.now(),
+      position: input.position ?? Number(positionResult.maxPosition) + 1,
       isActive: input.isActive ?? true,
     })
     .returning()

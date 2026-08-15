@@ -9,6 +9,7 @@ export type NewMenuItemInput = {
   name: string
   priceCents: number
   imageUrl?: string | null
+  originalImageUrl?: string | null
   imagePlaceholderUrl?: string | null
   badges?: Array<{ label: string; color: string }> | null
   position?: number | null
@@ -41,6 +42,7 @@ export async function createMenuItem(input: NewMenuItemInput) {
       name: input.name,
       priceCents: input.priceCents,
       imageUrl: input.imageUrl ?? null,
+      originalImageUrl: input.originalImageUrl ?? null,
       imagePlaceholderUrl: input.imagePlaceholderUrl ?? null,
       badges: input.badges ?? null,
       position: input.position ?? Number(positionResult.maxPosition) + 1,
@@ -70,6 +72,9 @@ export async function updateMenuItem(
         ? { priceCents: updates.priceCents }
         : {}),
       ...(updates.imageUrl !== undefined ? { imageUrl: updates.imageUrl } : {}),
+      ...(updates.originalImageUrl !== undefined
+        ? { originalImageUrl: updates.originalImageUrl }
+        : {}),
       ...(updates.imagePlaceholderUrl !== undefined
         ? { imagePlaceholderUrl: updates.imagePlaceholderUrl }
         : {}),

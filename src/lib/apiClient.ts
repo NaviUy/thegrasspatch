@@ -160,6 +160,7 @@ export const api = {
     name: string
     priceCents: number
     imageUrl?: string
+    originalImageUrl?: string
     imagePlaceholderUrl?: string
     badges?: Array<{ label: string; color?: string }>
     isActive: boolean
@@ -174,6 +175,7 @@ export const api = {
       name: string
       priceCents: number
       imageUrl?: string | null
+      originalImageUrl?: string | null
       imagePlaceholderUrl?: string | null
       badges?: Array<{ label: string; color?: string }>
       isActive: boolean

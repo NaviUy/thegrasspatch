@@ -31,6 +31,7 @@ export const menuItems = pgTable('menu_items', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: varchar('name', { length: 255 }).notNull(),
   imageUrl: text('image_url'),
+  originalImageUrl: text('original_image_url'),
   imagePlaceholderUrl: text('image_placeholder_url'),
   position: integer('position'),
   badges: jsonb('badges').$type<

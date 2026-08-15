@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useAuthUser } from '@/hooks/useAuthUser'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '@/lib/apiClient'
 import { AdminLayout } from '@/components/admin/AdminLayout'
 import { Label } from '@/components/ui/label'
@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog'
 import { Reorder } from 'framer-motion'
 import { ItemInventoryDialog } from '@/components/admin/ItemInventoryDialog'
+import { MenuImageCropField } from '@/components/admin/MenuImageCropField'
 
 export const Route = createFileRoute('/admin/menu/')({
   component: RouteComponent,
@@ -35,6 +36,7 @@ type MenuItem = {
   name: string
   priceCents: number
   imageUrl?: string | null
+  originalImageUrl?: string | null
   imagePlaceholderUrl?: string | null
   badges?: Array<{ label: string; color?: string }> | null
   isActive: boolean
@@ -106,6 +108,7 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
   const [name, setName] = useState(item.name)
   const [price, setPrice] = useState((item.priceCents / 100).toFixed(2))
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [originalImageFile, setOriginalImageFile] = useState<File | null>(null)
   const [badges, setBadges] = useState<BadgeForm[]>(
     item.badges?.map((b) => ({ label: b.label })) ?? [],
   )
@@ -128,20 +131,31 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
     try {
       const priceCents = Math.round(priceNumber * 100)
       let uploadedUrl: string | null = item.imageUrl ?? null
+      let uploadedOriginalUrl: string | null = item.originalImageUrl ?? null
       let uploadedPlaceholder: string | null | undefined =
         item.imagePlaceholderUrl ?? null
 
       if (imageFile) {
-        const { publicUrl, placeholderUrl } =
-          await api.uploadMenuImage(imageFile)
-        uploadedUrl = publicUrl
-        uploadedPlaceholder = placeholderUrl
+        const [croppedUpload, originalUpload] = await Promise.all([
+          api.uploadMenuImage(imageFile),
+          originalImageFile
+            ? api.uploadMenuImage(originalImageFile)
+            : Promise.resolve(null),
+        ])
+        uploadedUrl = croppedUpload.publicUrl
+        uploadedPlaceholder = croppedUpload.placeholderUrl
+        uploadedOriginalUrl =
+          originalUpload?.publicUrl ??
+          item.originalImageUrl ??
+          item.imageUrl ??
+          croppedUpload.publicUrl
       }
 
       const { item: updated } = await api.updateMenuItem(item.id, {
         name: name.trim(),
         priceCents,
         imageUrl: uploadedUrl,
+        originalImageUrl: uploadedOriginalUrl,
         imagePlaceholderUrl: uploadedPlaceholder,
         badges: badges.map((b) => ({ label: b.label, color: '#000000' })),
         options: optionGroups.map((group) => ({
@@ -188,6 +202,7 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
           setBadges(item.badges?.map((badge) => ({ label: badge.label })) ?? [])
           setOptionGroups(createOptionDrafts(item.options))
           setImageFile(null)
+          setOriginalImageFile(null)
           setError(null)
         }
       }}
@@ -230,18 +245,17 @@ function EditMenuItemDialog({ item, onUpdated }: EditMenuItemDialogProps) {
             />
           </div>
 
-          <div className="space-y-1">
-            <Label htmlFor="edit-image">Image</Label>
-            <Input
-              id="edit-image"
-              type="file"
-              accept="image/*"
-              onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
-            />
-            <p className="text-[11px] text-slate-500">
-              Upload a new image (required for updates).
-            </p>
-          </div>
+          <MenuImageCropField
+            id={`edit-image-${item.id}`}
+            value={imageFile}
+            existingImageUrl={item.imageUrl}
+            existingOriginalImageUrl={item.originalImageUrl}
+            onChange={(croppedFile, originalFile) => {
+              setImageFile(croppedFile)
+              setOriginalImageFile(originalFile)
+            }}
+            disabled={saving}
+          />
 
           <div className="space-y-2">
             <Label>Badges</Label>
@@ -754,9 +768,9 @@ function RouteComponent() {
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [originalImageFile, setOriginalImageFile] = useState<File | null>(null)
   const [badges, setBadges] = useState<BadgeForm[]>([])
   const [creating, setCreating] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const loading = itemsLoading || authLoading
   const errorMessage = error ?? authError
@@ -803,19 +817,26 @@ function RouteComponent() {
     try {
       const priceCents = Math.round(priceNumber * 100)
       let uploadedUrl = undefined as string | undefined
+      let uploadedOriginalUrl = undefined as string | undefined
       let uploadedPlaceholder: string | undefined
 
       if (imageFile) {
-        const { publicUrl, placeholderUrl } =
-          await api.uploadMenuImage(imageFile)
-        uploadedUrl = publicUrl
-        uploadedPlaceholder = placeholderUrl
+        const [croppedUpload, originalUpload] = await Promise.all([
+          api.uploadMenuImage(imageFile),
+          originalImageFile
+            ? api.uploadMenuImage(originalImageFile)
+            : Promise.resolve(null),
+        ])
+        uploadedUrl = croppedUpload.publicUrl
+        uploadedOriginalUrl = originalUpload?.publicUrl ?? uploadedUrl
+        uploadedPlaceholder = croppedUpload.placeholderUrl
       }
 
       const { item } = await api.createMenuItem({
         name: name.trim(),
         priceCents,
         imageUrl: uploadedUrl,
+        originalImageUrl: uploadedOriginalUrl,
         imagePlaceholderUrl: uploadedPlaceholder,
         badges: badges.map((b) => ({ label: b.label, color: '#000000' })),
         isActive: true,
@@ -825,8 +846,8 @@ function RouteComponent() {
       setName('')
       setPrice('')
       setImageFile(null)
+      setOriginalImageFile(null)
       setBadges([])
-      if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (error: any) {
       console.error(error)
       setError(error.message ?? 'Failed to create menu item.')
@@ -919,18 +940,16 @@ function RouteComponent() {
                   />
                 </div>
 
-                <div className="space-y-1 sm:col-span-3">
-                  <Label htmlFor="item-image">Image</Label>
-                  <Input
+                <div className="sm:col-span-3">
+                  <MenuImageCropField
                     id="item-image"
-                    type="file"
-                    accept="image/*"
-                    ref={fileInputRef}
-                    onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                    value={imageFile}
+                    onChange={(croppedFile, originalFile) => {
+                      setImageFile(croppedFile)
+                      setOriginalImageFile(originalFile)
+                    }}
+                    disabled={creating}
                   />
-                  <p className="text-[11px] text-slate-500">
-                    Upload an image (optional).
-                  </p>
                 </div>
 
                 <div className="space-y-2 sm:col-span-3">
